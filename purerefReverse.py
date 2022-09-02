@@ -106,7 +106,9 @@ class PurerefObject:
     # text list
     text = []
 
-
+    def __init__(self):
+        self.images = []
+        self.text = []
 
     def CountImageItems(self):
         # Count the amount of image transforms and assign their IDs
