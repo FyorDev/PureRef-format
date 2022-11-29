@@ -7,21 +7,18 @@ class PurGraphicsTextItem:
     # Part of a PureRefObj
 
     # ASCII text contents
-    text = ""
-    matrix = [1.0, 0.0, 0.0, 1.0]
-    x, y = 0.0, 0.0
-    zLayer = 1.0
-    id = 0
-    opacity = 65535
-    rgb = [65535, 65535, 65535]
-    opacityBackground = 5000
-    rgbBackground = [0, 0, 0]
 
     def __init__(self):
-        self.matrix = [1.0, 0.0, 0.0, 1.0]     
+        self.text = ""
+        self.matrix = [1.0, 0.0, 0.0, 1.0]
+        self.x, self.y = 0.0, 0.0
+        self.zLayer = 1.0
+        self.id = 0
+        self.opacity = 65535
         self.rgb = [65535, 65535, 65535]
+        self.opacityBackground = 5000
         self.rgbBackground = [0, 0, 0]
-   
+
     # own simple text transform
 
 
@@ -29,26 +26,23 @@ class PurGraphicsImageItem:
         
     # Part of a PurImage
     # Be aware: PureRef transforms have an alternative second format for rotated cropping where the image is no longer a rectangle
-    source = ("BruteForceLoaded".encode("utf-16-le")[31:32] + "BruteForceLoaded".encode("utf-16-le")[0:31]).decode("utf-8")
-    name = ("image".encode("utf-16-le")[9:10] + "image".encode("utf-16-le")[0:9]).decode("utf-8")
-    matrix = [1.0, 0.0, 0.0, 1.0]
-    x, y = 0.0, 0.0
-    id = 0
-    zLayer = 1.0
-
-    matrixBeforeCrop = [1.0, 0.0, 0.0, 1.0]
-    xCrop, yCrop = 0.0, 0.0
-    scaleCrop = 1.0
-    pointCount = 5  # 4 byte
-    points = [[-1000, 1000, 1000, -1000, -1000],[-1000, -1000, 1000, 1000, -1000]]  # 4 byte 01 and 2 doubles
 
     def __init__(self):
+        self.source = ("BruteForceLoaded".encode("utf-16-le")[31:32] + "BruteForceLoaded".encode("utf-16-le")[0:31]).decode("utf-8")
+        self.name = ("image".encode("utf-16-le")[9:10] + "image".encode("utf-16-le")[0:9]).decode("utf-8")
         self.matrix = [1.0, 0.0, 0.0, 1.0]
+        self.x, self.y = 0.0, 0.0
+        self.id = 0
+        self.zLayer = 1.0
+
         self.matrixBeforeCrop = [1.0, 0.0, 0.0, 1.0]
-        self.points = [[-1000, 1000, 1000, -1000, -1000],[-1000, -1000, 1000, 1000, -1000]]
+        self.xCrop, self.yCrop = 0.0, 0.0
+        self.scaleCrop = 1.0
+        self.pointCount = 5  # 4 byte
+        self.points = [[-1000, 1000, 1000, -1000, -1000],[-1000, -1000, 1000, 1000, -1000]]  # 4 byte 01 and 2 doubles
 
     def resetCrop(self, width, height):
-        self.xCrop, self.yCrop  = -float(width/2), -float(height/2)
+        self.xCrop, self.yCrop = -float(width/2), -float(height/2)
         width = width/2
         height = height/2
         self.points = [[-width, width, width, -width, -width],[-height, -height, height, height, -height]]
@@ -82,26 +76,23 @@ class PurImage:
 
 
 class PurerefObject:
-    # A class holding all the images (which include their own transforms), text and anything else that would be in a .pur file
+
+    # A class holding all the images (which include their own transforms),
+    # text and anything else that would be in a .pur file
     # Can be exported to a .pur file, can be imported from a .pur file and can be generated from images to later export
-
-    # Canvas width and height
-    canvas = [-10000.0, -10000.0, 10000.0, 10000.0]
-    # View zoom level
-    zoom = 1.0
-    # View location
-    xCanvas, yCanvas = 0, 0
-
-    folderLocation = os.getcwd()
-
-    # image list
-    images = []
-
-    # text list
-    text = []
-
     def __init__(self):
+        # Canvas width and height
+        self.canvas = [-10000.0, -10000.0, 10000.0, 10000.0]
+        # View zoom level
+        self.zoom = 1.0
+        # View location
+        self.xCanvas, self.yCanvas = 0, 0
+
+        self.folderLocation = os.getcwd()
+
+        # image list
         self.images = []
+        # text list
         self.text = []
 
     def CountImageItems(self):

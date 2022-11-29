@@ -24,19 +24,18 @@ def generate(readFolder, writeFile):
             image = image.convert(mode="RGB")
             with BytesIO() as f:
                 image.save(f, format="PNG", compress_level=7)
-            #    image.save(f, format="PNG", optimize=True)
                 pngBin = f.getvalue()
             
-        purImage = purRev.PurImage()
-        purImage.pngBinary = pngBin
+            purImage = purRev.PurImage()
+            purImage.pngBinary = pngBin
 
-        purTransform = purRev.PurGraphicsImageItem()
-        purTransform.resetCrop(image.width, image.height)
-        purTransform.setName(file.replace(".jpg", ""))
-        purTransform.setSource(readFolder + "/" + file)
-        purImage.transforms = [purTransform]
+            purTransform = purRev.PurGraphicsImageItem()
+            purTransform.resetCrop(image.width, image.height)
+            purTransform.setName(file.replace(".jpg", ""))
+            purTransform.setSource(readFolder + "/" + file)
+            purImage.transforms = [purTransform]
 
-        purFile.images.append(purImage)
+            purFile.images.append(purImage)
 
     # Normalize scale
     totalWidth = 0
