@@ -1,0 +1,11 @@
+# Python
+__pycache__
+
+# Editor
+.vs
+.vscode
+.idea
+
+# Program folders
+Artists
+Purs

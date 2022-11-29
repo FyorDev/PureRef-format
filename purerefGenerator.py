@@ -93,5 +93,3 @@ def generate(readFolder, writeFile):
 
     purFile.write(writeFile)
     print("Done! File created")
-
-generate(os.getcwd() + "(folder name)", "newfile.pur")
