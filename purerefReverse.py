@@ -2,6 +2,7 @@ import os
 import struct
 import colorsys
 
+
 class PurGraphicsTextItem:
     # Part of a PureRefObj
 
@@ -23,6 +24,7 @@ class PurGraphicsTextItem:
    
     # own simple text transform
 
+
 class PurGraphicsImageItem:
         
     # Part of a PurImage
@@ -35,15 +37,16 @@ class PurGraphicsImageItem:
     zLayer = 1.0
 
     matrixBeforeCrop = [1.0, 0.0, 0.0, 1.0]
-    xCrop, yCrop  = 0.0, 0.0
+    xCrop, yCrop = 0.0, 0.0
     scaleCrop = 1.0
-    pointCount = 5 #4 byte
-    points = [[-1000, 1000, 1000, -1000, -1000],[-1000, -1000, 1000, 1000, -1000]] # 4 byte 01 and 2 doubles
+    pointCount = 5  # 4 byte
+    points = [[-1000, 1000, 1000, -1000, -1000],[-1000, -1000, 1000, 1000, -1000]]  # 4 byte 01 and 2 doubles
+
     def __init__(self):
         self.matrix = [1.0, 0.0, 0.0, 1.0]
         self.matrixBeforeCrop = [1.0, 0.0, 0.0, 1.0]
         self.points = [[-1000, 1000, 1000, -1000, -1000],[-1000, -1000, 1000, 1000, -1000]]
-    
+
     def resetCrop(self, width, height):
         self.xCrop, self.yCrop  = -float(width/2), -float(height/2)
         width = width/2
@@ -57,26 +60,16 @@ class PurGraphicsImageItem:
         self.name = (name.encode("utf-16-le")[len(name)*2-1:len(name)*2] + name.encode("utf-16-le")[0:len(name)*2-1]).decode("utf-8")
 
 
-
 class PurImage:
     # Part of a PureRefObj
-    # Holds an image and its transform(s) 
-
-    # original location for identification
-    address = [0,0]
-
-    # image data
-    pngBinary:bytearray = []
-
-    # transforms[] for multiple instances
-    transforms = []
-
+    # Holds an image and its transform(s) (usually only one)
     def __init__(self):
-        self.address = [0,0]
-        self.pngBinary:bytearray = []
+        # original location for identification
+        self.address = [0, 0]
+        # image data
+        self.pngBinary: bytearray = bytearray()
+        # transforms[] for multiple instances
         self.transforms = []
-
-
 
 
 ###################
@@ -86,6 +79,7 @@ class PurImage:
 # Build an interpreter for this class to make your own PureRef converter to/from any file without having to decipher the hex bytes like I had to
 #
 ###################
+
 
 class PurerefObject:
     # A class holding all the images (which include their own transforms), text and anything else that would be in a .pur file
@@ -120,14 +114,14 @@ class PurerefObject:
         return count
 
     # Import a .pur file into this object
-    def read(self, file:str):
+    def read(self, file: str):
         purBytes = bytearray(open(file, "rb").read())
         # ReadPin to remember addresses while removing bytes
         readPin = 0
 
-        totalTextItems = struct.unpack('>H', purBytes[12:14] )[0] - struct.unpack('>H', purBytes[14:16] )[0]
-        totalImageItems = struct.unpack('>H', purBytes[14:16] )[0]
-        fileLength = struct.unpack('>Q', purBytes[16:24] )[0]
+        totalTextItems = struct.unpack('>H', purBytes[12:14])[0] - struct.unpack('>H', purBytes[14:16] )[0]
+        totalImageItems = struct.unpack('>H', purBytes[14:16])[0]
+        fileLength = struct.unpack('>Q', purBytes[16:24])[0]
 
         # Canvas width and height
         self.canvas = [
@@ -147,8 +141,8 @@ class PurerefObject:
 
         # Read all images, no transforms yet
         while purBytes.__contains__(bytearray([137, 80, 78, 71,   13, 10, 26, 10])):
-            start = purBytes.find( bytearray([137, 80, 78, 71,   13, 10, 26, 10]))
-            end = purBytes.find ( bytearray([0, 0, 0, 0,   73, 69, 78, 68,   174, 66, 96, 130])) + 12
+            start = purBytes.find(bytearray([137, 80, 78, 71,   13, 10, 26, 10]))
+            end = purBytes.find (bytearray([0, 0, 0, 0,   73, 69, 78, 68,   174, 66, 96, 130])) + 12
 
             if start >= 4:
                 image = PurImage()
@@ -180,14 +174,13 @@ class PurerefObject:
             purBytes[0: 4] = []
             readPin += 4
 
-
         ImageItems = []
         ###
         #
         # Read all GraphicsImageItems and GraphicsTextItems, they are in the order they were added
         #
         ###
-        while(struct.unpack(">I", purBytes[8:12])[0] == 34 or struct.unpack(">I", purBytes[8:12])[0] == 32):
+        while struct.unpack(">I", purBytes[8:12])[0] == 34 or struct.unpack(">I", purBytes[8:12])[0] == 32:
             if struct.unpack(">I", purBytes[8:12])[0] == 34:
                 transformEnd = struct.unpack(">Q", purBytes[0:8])[0]
                 transform = PurGraphicsImageItem()
@@ -211,7 +204,7 @@ class PurerefObject:
                         readPin += 4
                         purBytes[0:4] = []                        
                 else:
-                    transform.source = purBytes[4:4+ struct.unpack(">I", purBytes[0:4])[0] ].decode("utf-8", errors="replace")
+                    transform.source = purBytes[4:4+ struct.unpack(">I", purBytes[0:4])[0]].decode("utf-8", errors="replace")
                     readPin += 4 + struct.unpack(">I", purBytes[0:4])[0]
                     purBytes[0:4+ struct.unpack(">I", purBytes[0:4])[0] ] = []
 
@@ -221,7 +214,7 @@ class PurerefObject:
                         readPin += 4
                         purBytes[0:4] = []
                     else:
-                        transform.name = purBytes[4:4+ struct.unpack(">I", purBytes[0:4])[0] ].decode("utf-8", errors="replace")
+                        transform.name = purBytes[4:4+ struct.unpack(">I", purBytes[0:4])[0]].decode("utf-8", errors="replace")
                         readPin += 4 + struct.unpack(">I", purBytes[0:4])[0]
                         purBytes[0:4+ struct.unpack(">I", purBytes[0:4])[0] ] = []
 
@@ -464,15 +457,28 @@ class PurerefObject:
     # Export this object to a .pur file
     def write(self, file:str):
         # A standard empty header for PureRef 1.11
-        purBytes = bytearray(b'\x00\x00\x00\x08\x001\x00.\x001\x000\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01&\x00\x00\x00\x0c\x001\x00.\x001\x001\x00.\x001\x00\x00\x00@\x005\x00b\x00e\x00b\x00c\x002\x00c\x00f\x00f\x003\x001\x005\x001\x00b\x001\x00c\x000\x007\x000\x004\x009\x00d\x003\x00e\x00e\x00a\x00e\x000\x006\x005\x005\x00f\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00?\xf0\x00\x00\x00\x00\x00\x00?\xf0\x00\x00\x00\x00\x00\x00?\xf0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00?\xf0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00?\xf0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')
+        purBytes = bytearray(b'\x00\x00\x00\x08\x00\x31\x00\x2E\x00\x31\x00\x30\x00\x00\x00\x00'
+                             b'\x00\x00\x00\x00\x00\x00\x01\x2E\x00\x00\x00\x0C\x00\x31\x00\x2E'
+                             b'\x00\x31\x00\x31\x00\x2E\x00\x31\x00\x00\x00\x40\x00\x35\x00\x62'
+                             b'\x00\x65\x00\x62\x00\x63\x00\x32\x00\x63\x00\x66\x00\x66\x00\x33'
+                             b'\x00\x31\x00\x35\x00\x31\x00\x62\x00\x31\x00\x63\x00\x30\x00\x37'
+                             b'\x00\x30\x00\x34\x00\x39\x00\x64\x00\x33\x00\x65\x00\x65\x00\x61'
+                             b'\x00\x65\x00\x30\x00\x36\x00\x35\x00\x35\x00\x66\x00\x00\x00\x00'
+                             b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                             b'\x3F\xF0\x00\x00\x00\x00\x00\x00\x3F\xF0\x00\x00\x00\x00\x00\x00'
+                             b'\x3F\xF0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                             b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                             b'\x3F\xF0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                             b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                             b'\x3F\xF0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')
 
         # Write GraphicsImageItem+GraphicsTextItem count and GraphicsImageItem count
         imageitems = self.CountImageItems()
-        purBytes[12:14] = bytearray( struct.pack(">H", imageitems + len(self.text)))
-        purBytes[14:16] = bytearray( struct.pack(">H", imageitems ))
+        purBytes[12:14] = bytearray(struct.pack(">H", imageitems + len(self.text)))
+        purBytes[14:16] = bytearray(struct.pack(">H", imageitems))
 
-        # Write (and assign) GraphicsImageItem ID count, not usually the same but we discard unused transform IDs
-        purBytes[108:114] = bytearray( struct.pack(">I", imageitems + len(self.text)))
+        # Write (and assign) GraphicsImageItem ID count, not usually the same, but we discard unused transform IDs
+        purBytes[108:112] = bytearray(struct.pack(">I", imageitems + len(self.text)))
         # ImageItems received IDs in CountImageItems(), now give text their own ID
         for i in range(len(self.text)):
             self.text[i].id = imageitems + i

@@ -10,7 +10,6 @@ Because I wanted to save time gathering tons of reference, and wondered if the n
 TODO:
 - Refactor lots, and comment  
   - Move things to INIT  
-  - Alternative to ugly and long purBytes write line?  
   - Explain in comments how img address - transform ID are linked  
 - Fix save directory text format  
 - Better documentation  
