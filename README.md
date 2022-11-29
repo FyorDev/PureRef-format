@@ -9,9 +9,7 @@ Because I wanted to save time gathering tons of reference, and wondered if the n
 
 TODO:
 - Refactor lots, and comment  
-  - Move things to INIT  
   - Explain in comments how img address - transform ID are linked  
-- Fix save directory text format  
 - Better documentation  
 - Add image source instead of making everything BruteForceLoaded, handle chinese characters  
 - Write file format specification  

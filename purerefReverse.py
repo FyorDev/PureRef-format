@@ -134,7 +134,7 @@ class PurFile:
         # Read all images, no transforms yet
         while pur_bytes.__contains__(bytearray([137, 80, 78, 71,   13, 10, 26, 10])):
             start = pur_bytes.find(bytearray([137, 80, 78, 71,   13, 10, 26, 10]))
-            end = pur_bytes.find (bytearray([0, 0, 0, 0,   73, 69, 78, 68,   174, 66, 96, 130])) + 12
+            end = pur_bytes.find(bytearray([0, 0, 0, 0,   73, 69, 78, 68,   174, 66, 96, 130])) + 12
 
             if start >= 4:
                 image = PurImage()
@@ -314,7 +314,7 @@ class PurFile:
                 pur_bytes[0:12 + struct.unpack(">I", pur_bytes[8:12])[0] ] = []
 
                 # Read the text
-                text_transform.text = pur_bytes[4:4+ struct.unpack(">I", pur_bytes[0:4])[0] ].decode("utf-8", errors="replace")
+                text_transform.text = pur_bytes[4:4+ struct.unpack(">I", pur_bytes[0:4])[0]].decode("utf-8", errors="replace")
                 read_pin += 4 + struct.unpack(">I", pur_bytes[0:4])[0]
                 pur_bytes[0:4 + struct.unpack(">I", pur_bytes[0:4])[0]] = []
 
@@ -342,7 +342,8 @@ class PurFile:
 
                 # text unknown permanent 1.0 float we don't want
                 if struct.unpack('>d', pur_bytes[0:8] )[0] != 1.0:
-                    print("Notice: mysterious text permanent float is not 1.0 (investigate?) ", struct.unpack('>d', pur_bytes[0:8] )[0])
+                    print("Notice: mysterious text permanent float is not 1.0 (investigate?) ",
+                          struct.unpack('>d', pur_bytes[0:8])[0])
                 pur_bytes[0:8] = []
                 read_pin += 8
 
@@ -658,7 +659,7 @@ class PurFile:
 
         # Location
         pur_bytes += struct.pack(">I", len(self.folderLocation))
-        pur_bytes += self.folderLocation.encode("utf-8")
+        pur_bytes += self.folderLocation.encode("utf-16")
         pur_bytes[16:24] = bytearray(struct.pack(">Q", len(pur_bytes)))
 
         for reference in references:

@@ -13,15 +13,15 @@ from io import BytesIO
 ###
 
 
-def generate(readFolder, writeFile):
+def generate(read_folder, write_file):
 
     pur_file = purRev.PurFile()
 
     # All files in folder
-    for file in sorted(os.listdir(readFolder), key=lambda s: [int(t) if t.isdigit() else t.lower() for t in re.split('(\d+)', s)]):
+    for file in sorted(os.listdir(read_folder), key=lambda s: [int(t) if t.isdigit() else t.lower() for t in re.split('(\d+)', s)]):
         if file.endswith(".jpg" or ".png"):
             print(file)
-            image = Image.open(readFolder + "/" + file)
+            image = Image.open(read_folder + "/" + file)
             image = image.convert(mode="RGB")
             with BytesIO() as f:
                 image.save(f, format="PNG", compress_level=7)
@@ -33,7 +33,7 @@ def generate(readFolder, writeFile):
             pur_transform = purRev.PurGraphicsImageItem()
             pur_transform.reset_crop(image.width, image.height)
             pur_transform.set_name(file.replace(".jpg", ""))
-            pur_transform.set_source(readFolder + "/" + file)
+            pur_transform.set_source(read_folder + "/" + file)
             pur_image.transforms = [pur_transform]
 
             pur_file.images.append(pur_image)
@@ -48,6 +48,12 @@ def generate(readFolder, writeFile):
             transform.matrix = [float(1000/height), 0.0, 0.0, float(1000/height)]
             total_width += float(1000/height)*width
             transforms.append(transform)
+
+    # Prevent row_width from dividing by 0 later
+    if len(transforms) <= 1:
+        pur_file.write(write_file)
+        print("Done! File created with one or less images")
+        return
 
     # Divide into rows
     rows = [transforms]
@@ -66,10 +72,9 @@ def generate(readFolder, writeFile):
                     new_row_second.append(transform)
             new_rows.append(new_row)
             new_rows.append(new_row_second)
-        rows=new_rows
+        rows = new_rows
 
     # Normalize row scales and actually place images
-    row_num = 0
     transform_y_old = 0
     transform_y = 0
     for row in rows:
@@ -87,7 +92,5 @@ def generate(readFolder, writeFile):
             transform.y = transform_y_old + transform.matrix[0]*transform.points[1][2]
         transform_y_old = transform_y
 
-        row_num += 1
-
-    pur_file.write(writeFile)
+    pur_file.write(write_file)
     print("Done! File created")

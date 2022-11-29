@@ -1,8 +1,4 @@
-import purerefReverse as purRev
-from PIL import Image
 import os
-import re
-import sys
 import purerefGenerator
 
 for folder in os.listdir(os.getcwd() + "/Artists"):
