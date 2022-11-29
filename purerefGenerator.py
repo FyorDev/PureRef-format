@@ -1,25 +1,31 @@
-import purerefReverse as purRev
+import purerefReverse
 from PIL import Image
 import os
 import re
 from io import BytesIO
 
-###
-#
-# This is an example of what you can do with the purerefReverse library
-#
-# This function will create a neatly organized pureref file from a folder with images
-#
-###
+####################################################################################################
+# This function will create a neatly organized .pur (PureRef) file from a folder with PNG or JPG images
+# It is used in purerefArtistGenerator.py to create .pur files from all folders in Artists/
+####################################################################################################
 
 
 def generate(read_folder, write_file):
 
-    pur_file = purRev.PurFile()
+    # Initialize an empty .pur file which has objects for images with transforms, and text
+    pur_file = purerefReverse.PurFile()
 
-    # All files in folder
-    for file in sorted(os.listdir(read_folder), key=lambda s: [int(t) if t.isdigit() else t.lower() for t in re.split('(\d+)', s)]):
-        if file.endswith(".jpg" or ".png"):
+    # Natural sort
+    # For example: 0.jpg, 2.jpg, 10.jpg, 100.jpg
+    # Instead of: 0.jpg, 10.jpg, 100.jpg, 2.jpg
+    def natural_keys(text):
+        return [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', text)]
+
+    # All images in read_folder will be added to the .pur file
+    # The images will be sorted using natural sort https://stackoverflow.com/a/341745
+    # So you can number them to control the order
+    for file in sorted(os.listdir(read_folder), key=natural_keys):
+        if file.endswith(".jpg" or ".jpeg" or ".png"):
             print(file)
             image = Image.open(read_folder + "/" + file)
             image = image.convert(mode="RGB")
@@ -27,10 +33,10 @@ def generate(read_folder, write_file):
                 image.save(f, format="PNG", compress_level=7)
                 png_bin = f.getvalue()
 
-            pur_image = purRev.PurImage()
+            pur_image = purerefReverse.PurImage()
             pur_image.pngBinary = png_bin
 
-            pur_transform = purRev.PurGraphicsImageItem()
+            pur_transform = purerefReverse.PurGraphicsImageItem()
             pur_transform.reset_crop(image.width, image.height)
             pur_transform.set_name(file.replace(".jpg", ""))
             pur_transform.set_source(read_folder + "/" + file)
