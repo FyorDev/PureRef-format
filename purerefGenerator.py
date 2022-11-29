@@ -25,7 +25,7 @@ def generate(read_folder, write_file):
     # The images will be sorted using natural sort https://stackoverflow.com/a/341745
     # So you can number them to control the order
     for file in sorted(os.listdir(read_folder), key=natural_keys):
-        if file.endswith(".jpg" or ".jpeg" or ".png"):
+        if file.endswith(".jpg") or file.endswith(".jpeg") or file.endswith(".png"):
             print(file)
             image = Image.open(read_folder + "/" + file)
             image = image.convert(mode="RGB")
@@ -55,12 +55,6 @@ def generate(read_folder, write_file):
             total_width += float(1000/height)*width
             transforms.append(transform)
 
-    # Prevent row_width from dividing by 0 later
-    if len(transforms) <= 1:
-        pur_file.write(write_file)
-        print("Done! File created with one or less images")
-        return
-
     # Divide into rows
     rows = [transforms]
     while len(rows)*2000.0 < total_width:
@@ -84,14 +78,14 @@ def generate(read_folder, write_file):
     transform_y_old = 0
     transform_y = 0
     for row in rows:
-        row_width = 0
+        row_width = 1
         for transform in row:
             row_width += transform.matrix[0]*transform.points[0][2]*2
         for transform in row:
             transform.matrix[0] *= 20000/row_width
             transform.matrix[3] *= 20000/row_width
         transform_y += 1000 * 20000/row_width
-        row_width = 0
+        row_width = 1
         for transform in row:
             transform.x = row_width + transform.matrix[0]*transform.points[0][2]
             row_width += transform.matrix[0]*transform.points[0][2]*2
