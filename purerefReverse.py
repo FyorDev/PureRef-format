@@ -40,13 +40,13 @@ class PurGraphicsImageItem:
         self.xCrop, self.yCrop = 0.0, 0.0
         self.scaleCrop = 1.0
         self.pointCount = 5  # 4 byte
-        self.points = [[-1000, 1000, 1000, -1000, -1000],[-1000, -1000, 1000, 1000, -1000]]  # 4 byte 01 and 2 doubles
+        self.points = [[-1000, 1000, 1000, -1000, -1000], [-1000, -1000, 1000, 1000, -1000]]  # 4 byte 01 and 2 doubles
 
     def reset_crop(self, width, height):
         self.xCrop, self.yCrop = -float(width/2), -float(height/2)
         width = width/2
         height = height/2
-        self.points = [[-width, width, width, -width, -width],[-height, -height, height, height, -height]]
+        self.points = [[-width, width, width, -width, -width], [-height, -height, height, height, -height]]
 
     def set_source(self, source):
         self.source = (source.encode("utf-16-le")[len(source)*2-1:len(source)*2] + source.encode("utf-16-le")[0:len(source)*2-1]).decode("utf-8")
@@ -111,19 +111,19 @@ class PurFile:
         # ReadPin to remember addresses while removing bytes
         read_pin = 0
 
-        total_text_items = struct.unpack('>H', pur_bytes[12:14])[0] - struct.unpack('>H', pur_bytes[14:16] )[0]
+        total_text_items = struct.unpack('>H', pur_bytes[12:14])[0] - struct.unpack('>H', pur_bytes[14:16])[0]
         total_image_items = struct.unpack('>H', pur_bytes[14:16])[0]
         file_length = struct.unpack('>Q', pur_bytes[16:24])[0]
 
         # Canvas width and height
         self.canvas = [
-            struct.unpack('>d', pur_bytes[112:120] )[0],
-            struct.unpack('>d', pur_bytes[120:128] )[0],
-            struct.unpack('>d', pur_bytes[128:136] )[0],
-            struct.unpack('>d', pur_bytes[136:144] )[0],
+            struct.unpack('>d', pur_bytes[112:120])[0],
+            struct.unpack('>d', pur_bytes[120:128])[0],
+            struct.unpack('>d', pur_bytes[128:136])[0],
+            struct.unpack('>d', pur_bytes[136:144])[0],
         ]
-        self.zoom = struct.unpack('>d', pur_bytes[144:152] )[0]
-        self.xCanvas, self.yCanvas = struct.unpack('>i', pur_bytes[216:220] )[0], struct.unpack('>i', pur_bytes[220:224] )[0]
+        self.zoom = struct.unpack('>d', pur_bytes[144:152])[0]
+        self.xCanvas, self.yCanvas = struct.unpack('>i', pur_bytes[216:220])[0], struct.unpack('>i', pur_bytes[220:224])[0]
 
         #
         # Done reading header, remove and update readPin
@@ -181,7 +181,7 @@ class PurFile:
 
                 # Remove imageItem standard text
                 read_pin += 12 + struct.unpack(">I", pur_bytes[8:12])[0]
-                pur_bytes[0:12 + struct.unpack(">I", pur_bytes[8:12])[0] ] = []
+                pur_bytes[0:12 + struct.unpack(">I", pur_bytes[8:12])[0]] = []
 
                 # Check if bruteforceloaded
                 brute_force_loaded = False
@@ -196,7 +196,7 @@ class PurFile:
                     read_pin += 4
                     pur_bytes[0:4] = []
                 else:
-                    transform.source = pur_bytes[4:4+ struct.unpack(">I", pur_bytes[0:4])[0]].decode("utf-8", errors="replace")
+                    transform.source = pur_bytes[4:4 + struct.unpack(">I", pur_bytes[0:4])[0]].decode("utf-8", errors="replace")
                     read_pin += 4 + struct.unpack(">I", pur_bytes[0:4])[0]
                     pur_bytes[0:4 + struct.unpack(">I", pur_bytes[0:4])[0]] = []
 
@@ -206,13 +206,13 @@ class PurFile:
                         read_pin += 4
                         pur_bytes[0:4] = []
                     else:
-                        transform.name = pur_bytes[4:4+ struct.unpack(">I", pur_bytes[0:4])[0]].decode("utf-8", errors="replace")
+                        transform.name = pur_bytes[4:4 + struct.unpack(">I", pur_bytes[0:4])[0]].decode("utf-8", errors="replace")
                         read_pin += 4 + struct.unpack(">I", pur_bytes[0:4])[0]
-                        pur_bytes[0:4+ struct.unpack(">I", pur_bytes[0:4])[0] ] = []
+                        pur_bytes[0:4+ struct.unpack(">I", pur_bytes[0:4])[0]] = []
 
                 # Unknown permanent 1.0 float we don't want
-                if struct.unpack('>d', pur_bytes[0:8] )[0] != 1.0:
-                    print("Notice: mysterious permanent float is not 1.0 (investigate?) ", struct.unpack('>d', pur_bytes[0:8] )[0])
+                if struct.unpack('>d', pur_bytes[0:8])[0] != 1.0:
+                    print("Notice: mysterious permanent float is not 1.0 (investigate?) ", struct.unpack('>d', pur_bytes[0:8])[0])
                 pur_bytes[0:8] = []
                 read_pin += 8
 
@@ -231,15 +231,15 @@ class PurFile:
                 read_pin += 16
 
                 # Location
-                transform.x = struct.unpack('>d', pur_bytes[0:8] )[0]
+                transform.x = struct.unpack('>d', pur_bytes[0:8])[0]
                 pur_bytes[0:8] = []
                 read_pin += 8
-                transform.y = struct.unpack('>d', pur_bytes[0:8] )[0]
+                transform.y = struct.unpack('>d', pur_bytes[0:8])[0]
                 pur_bytes[0:8] = []
                 read_pin += 8
 
                 # Second unknown permanent 1.0 float we don't want
-                if struct.unpack('>d', pur_bytes[0:8] )[0] != 1.0:
+                if struct.unpack('>d', pur_bytes[0:8])[0] != 1.0:
                     print("Notice: mysterious permanent float2 is not 1.0 (investigate?) ", struct.unpack('>d', pur_bytes[0:8])[0])
                 pur_bytes[0:8] = []
                 read_pin += 8
@@ -286,7 +286,7 @@ class PurFile:
                 pur_bytes[0:4] = []
                 read_pin += 4
 
-                points_replace = [[],[]]
+                points_replace = [[], []]
                 for i in range(point_count):
                     points_replace[0].append(struct.unpack('>d', pur_bytes[4:12])[0])
                     points_replace[1].append(struct.unpack('>d', pur_bytes[12:20])[0])
@@ -311,10 +311,10 @@ class PurFile:
 
                 # Remove textItem standard text
                 read_pin += 12 + struct.unpack(">I", pur_bytes[8:12])[0]
-                pur_bytes[0:12 + struct.unpack(">I", pur_bytes[8:12])[0] ] = []
+                pur_bytes[0:12 + struct.unpack(">I", pur_bytes[8:12])[0]] = []
 
                 # Read the text
-                text_transform.text = pur_bytes[4:4+ struct.unpack(">I", pur_bytes[0:4])[0]].decode("utf-8", errors="replace")
+                text_transform.text = pur_bytes[4:4 + struct.unpack(">I", pur_bytes[0:4])[0]].decode("utf-8", errors="replace")
                 read_pin += 4 + struct.unpack(">I", pur_bytes[0:4])[0]
                 pur_bytes[0:4 + struct.unpack(">I", pur_bytes[0:4])[0]] = []
 
@@ -341,7 +341,7 @@ class PurFile:
                 read_pin += 8
 
                 # text unknown permanent 1.0 float we don't want
-                if struct.unpack('>d', pur_bytes[0:8] )[0] != 1.0:
+                if struct.unpack('>d', pur_bytes[0:8])[0] != 1.0:
                     print("Notice: mysterious text permanent float is not 1.0 (investigate?) ",
                           struct.unpack('>d', pur_bytes[0:8])[0])
                 pur_bytes[0:8] = []
@@ -403,7 +403,7 @@ class PurFile:
                 read_pin += 2
 
                 if is_background_hsv:
-                    text_transform.rgbBackground = list(colorsys.hsv_to_rgb((text_transform.rgbBackground[0]) / 35900, (text_transform.rgbBackground[1]) /65535, (text_transform.rgbBackground[2]) / 65535))
+                    text_transform.rgbBackground = list(colorsys.hsv_to_rgb((text_transform.rgbBackground[0]) / 35900, (text_transform.rgbBackground[1]) / 65535, (text_transform.rgbBackground[2]) / 65535))
                     text_transform.rgbBackground[0] = int(text_transform.rgbBackground[0] * 65535)
                     text_transform.rgbBackground[1] = int(text_transform.rgbBackground[1] * 65535)
                     text_transform.rgbBackground[2] = int(text_transform.rgbBackground[2] * 65535)
@@ -413,7 +413,6 @@ class PurFile:
             else:
                 print("Error! Unknown item")
                 break
-
 
         #
         #   All items done!
@@ -591,7 +590,7 @@ class PurFile:
                     pur_bytes += struct.pack(">d", transform.points[0][i])
                     pur_bytes += struct.pack(">d", transform.points[1][i])
 
-                # No idea if this actually holds information but it always looks the same
+                # No idea if this actually holds information, but it always looks the same
                 pur_bytes += struct.pack(">d", 0.0)
                 pur_bytes += struct.pack(">I", 1)
                 pur_bytes += struct.pack(">b", 0)
@@ -669,4 +668,3 @@ class PurFile:
 
         with open(file, "wb") as f:
             f.write(pur_bytes)
-
