@@ -33,8 +33,8 @@ class PurGraphicsImageItem:
     # rotated cropping where the image is no longer a rectangle
 
     def __init__(self):
-        self.source = ("BruteForceLoaded".encode("utf-16-le")[31:32] + "BruteForceLoaded".encode("utf-16-le")[0:31]).decode("utf-8")
-        self.name = ("image".encode("utf-16-le")[9:10] + "image".encode("utf-16-le")[0:9]).decode("utf-8")
+        self.source = encodestr("BruteForceLoaded")
+        self.name = encodestr("image")
         self.matrix = [1.0, 0.0, 0.0, 1.0]
         self.x, self.y = 0.0, 0.0
         self.id = 0
@@ -53,10 +53,10 @@ class PurGraphicsImageItem:
         self.points = [[-width, width, width, -width, -width], [-height, -height, height, height, -height]]
 
     def set_source(self, source):
-        self.source = (source.encode("utf-16-le")[len(source)*2-1:len(source)*2] + source.encode("utf-16-le")[0:len(source)*2-1]).decode("utf-8")
+        self.source = encodestr(source)
 
     def set_name(self, name):
-        self.name = (name.encode("utf-16-le")[len(name)*2-1:len(name)*2] + name.encode("utf-16-le")[0:len(name)*2-1]).decode("utf-8")
+        self.name = encodestr(name)
 
 
 class PurImage:
@@ -93,8 +93,7 @@ class PurFile:
         # View location
         self.xCanvas, self.yCanvas = 0, 0
 
-        self.folderLocation = os.getcwd()
-        self.folderLocation = (self.folderLocation.encode("utf-16-le")[len(self.folderLocation)*2-1:len(self.folderLocation)*2] + self.folderLocation.encode("utf-16-le")[0:len(self.folderLocation)*2-1]).decode("utf-8")
+        self.folderLocation = encodestr(os.getcwd())
 
         # image list
         self.images = []
@@ -535,7 +534,7 @@ class PurFile:
                 transform_end = len(pur_bytes)
                 pur_bytes += bytearray(struct.pack(">Q", 0))
                 # Purimageitem text
-                brute_force_loaded = transform.source.encode("utf-8") == "brute_force_loaded".encode("utf-16-le")[31:32] + "brute_force_loaded".encode("utf-16-le")[0:31]
+                brute_force_loaded = transform.source.encode == encodestr("brute_force_loaded")
                 pur_bytes += struct.pack(">I", 34)
                 pur_bytes += struct.pack(">b", 0)
                 pur_bytes += "GraphicsImageItem".encode("utf-16-le")
