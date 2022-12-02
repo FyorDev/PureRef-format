@@ -22,6 +22,10 @@ class PurGraphicsTextItem:
     # own simple text transform
 
 
+def encodestr(s: str):
+    length = len(s)*2
+    return (s.encode("utf-16-le")[length-1:length] + s.encode("utf-16-le")[0:length-1]).decode("utf-8")
+
 class PurGraphicsImageItem:
 
     # Part of a PurImage
@@ -90,6 +94,7 @@ class PurFile:
         self.xCanvas, self.yCanvas = 0, 0
 
         self.folderLocation = os.getcwd()
+        self.folderLocation = (self.folderLocation.encode("utf-16-le")[len(self.folderLocation)*2-1:len(self.folderLocation)*2] + self.folderLocation.encode("utf-16-le")[0:len(self.folderLocation)*2-1]).decode("utf-8")
 
         # image list
         self.images = []
@@ -658,7 +663,7 @@ class PurFile:
 
         # Location
         pur_bytes += struct.pack(">I", len(self.folderLocation))
-        pur_bytes += self.folderLocation.encode("utf-16")
+        pur_bytes += self.folderLocation.encode("utf-8")
         pur_bytes[16:24] = bytearray(struct.pack(">Q", len(pur_bytes)))
 
         for reference in references:
