@@ -3,11 +3,11 @@ import struct
 import colorsys
 
 
+# A text item is similar to an image transform, but with text, and a background and foreground color. No cropping.
 class PurGraphicsTextItem:
     # Part of a PureRefObj
 
     # ASCII text contents
-
     def __init__(self):
         self.text = ""
         self.matrix = [1.0, 0.0, 0.0, 1.0]
@@ -19,15 +19,15 @@ class PurGraphicsTextItem:
         self.opacityBackground = 5000
         self.rgbBackground = [0, 0, 0]
 
-    # own simple text transform
 
-
+# All strings need to be encoded like this to work with the format
+# I don't know what exactly they're using, but at least this works for ASCII characters
 def encodestr(s: str):
     length = len(s)*2
     return (s.encode("utf-16-le")[length-1:length] + s.encode("utf-16-le")[0:length-1]).decode("utf-8")
 
-class PurGraphicsImageItem:
 
+class PurGraphicsImageItem:
     # Part of a PurImage
     # Be aware: PureRef transforms have an alternative second format for
     # rotated cropping where the image is no longer a rectangle
@@ -35,22 +35,28 @@ class PurGraphicsImageItem:
     def __init__(self):
         self.source = encodestr("BruteForceLoaded")
         self.name = encodestr("image")
-        self.matrix = [1.0, 0.0, 0.0, 1.0]
+        self.matrix = [1.0, 0.0,
+                       0.0, 1.0]
+
         self.x, self.y = 0.0, 0.0
         self.id = 0
         self.zLayer = 1.0
 
-        self.matrixBeforeCrop = [1.0, 0.0, 0.0, 1.0]
+        self.matrixBeforeCrop = [1.0, 0.0,
+                                 0.0, 1.0]
+
         self.xCrop, self.yCrop = 0.0, 0.0
         self.scaleCrop = 1.0
         self.pointCount = 5  # 4 byte
-        self.points = [[-1000, 1000, 1000, -1000, -1000], [-1000, -1000, 1000, 1000, -1000]]  # 4 byte 01 and 2 doubles
+        self.points = [[-1000, 1000, 1000, -1000, -1000],
+                       [-1000, -1000, 1000, 1000, -1000]]  # 4 byte 01 and 2 doubles
 
     def reset_crop(self, width, height):
         self.xCrop, self.yCrop = -float(width/2), -float(height/2)
-        width = width/2
-        height = height/2
-        self.points = [[-width, width, width, -width, -width], [-height, -height, height, height, -height]]
+        w = width/2
+        h = height/2
+        self.points = [[-w, w, w, -w, -w],
+                       [-h, -h, h, h, -h]]
 
     def set_source(self, source):
         self.source = encodestr(source)
@@ -74,8 +80,8 @@ class PurImage:
 ###################
 #
 # The class this whole project is about
-#
-# Build an interpreter for this class to make your own PureRef converter to/from any file without having to decipher the hex bytes like I had to
+# Build an interpreter for this class to make your own PureRef converter to/from
+# any file without having to decipher the hex bytes like I had to
 #
 ###################
 
@@ -113,11 +119,10 @@ class PurFile:
     def read(self, file: str):
         pur_bytes = bytearray(open(file, "rb").read())
         # ReadPin to remember addresses while removing bytes
-        read_pin = 0
 
-        total_text_items = struct.unpack('>H', pur_bytes[12:14])[0] - struct.unpack('>H', pur_bytes[14:16])[0]
+        # total_text_items = struct.unpack('>H', pur_bytes[12:14])[0] - struct.unpack('>H', pur_bytes[14:16])[0]
         total_image_items = struct.unpack('>H', pur_bytes[14:16])[0]
-        file_length = struct.unpack('>Q', pur_bytes[16:24])[0]
+        # file_length = struct.unpack('>Q', pur_bytes[16:24])[0]
 
         # Canvas width and height
         self.canvas = [
@@ -382,7 +387,9 @@ class PurFile:
                 read_pin += 2
 
                 if is_hsv:
-                    text_transform.rgb = list(colorsys.hsv_to_rgb((text_transform.rgb[0]) / 35900, (text_transform.rgb[1]) / 65535, (text_transform.rgb[2]) / 65535))
+                    text_transform.rgb = list(colorsys.hsv_to_rgb((text_transform.rgb[0]) / 35900,
+                                                                  (text_transform.rgb[1]) / 65535,
+                                                                  (text_transform.rgb[2]) / 65535))
                     text_transform.rgb[0] = int(text_transform.rgb[0] * 65535)
                     text_transform.rgb[1] = int(text_transform.rgb[1] * 65535)
                     text_transform.rgb[2] = int(text_transform.rgb[2] * 65535)
@@ -407,7 +414,9 @@ class PurFile:
                 read_pin += 2
 
                 if is_background_hsv:
-                    text_transform.rgbBackground = list(colorsys.hsv_to_rgb((text_transform.rgbBackground[0]) / 35900, (text_transform.rgbBackground[1]) / 65535, (text_transform.rgbBackground[2]) / 65535))
+                    text_transform.rgbBackground = list(colorsys.hsv_to_rgb((text_transform.rgbBackground[0]) / 35900,
+                                                                            (text_transform.rgbBackground[1]) / 65535,
+                                                                            (text_transform.rgbBackground[2]) / 65535))
                     text_transform.rgbBackground[0] = int(text_transform.rgbBackground[0] * 65535)
                     text_transform.rgbBackground[1] = int(text_transform.rgbBackground[1] * 65535)
                     text_transform.rgbBackground[2] = int(text_transform.rgbBackground[2] * 65535)
