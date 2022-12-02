@@ -115,22 +115,6 @@ class PurFile:
     # Import a .pur file into this object
     def read(self, file: str):
         pur_bytes = bytearray(open(file, "rb").read())
-
-        total_text_items = struct.unpack('>H', pur_bytes[12:14])[0] - struct.unpack('>H', pur_bytes[14:16])[0]
-        total_image_items = struct.unpack('>H', pur_bytes[14:16])[0]
-        # file_length = struct.unpack('>Q', pur_bytes[16:24])[0]
-
-        # Canvas width and height
-        self.canvas = [
-            struct.unpack('>d', pur_bytes[112:120])[0],
-            struct.unpack('>d', pur_bytes[120:128])[0],
-            struct.unpack('>d', pur_bytes[128:136])[0],
-            struct.unpack('>d', pur_bytes[136:144])[0],
-        ]
-        self.zoom = struct.unpack('>d', pur_bytes[144:152])[0]
-        self.xCanvas, self.yCanvas = struct.unpack('>i', pur_bytes[216:220])[0], struct.unpack('>i', pur_bytes[220:224])[0]
-
-        # Done reading header, remove and update readPin
         read_pin = 0
 
         def erase(length):
@@ -138,6 +122,24 @@ class PurFile:
             nonlocal read_pin
             read_pin += length
 
+        def unpack(typ: str, begin: int, stop: int):
+            return struct.unpack(typ, pur_bytes[begin:stop])[0]
+
+        total_text_items = unpack('>H', 12, 14) - unpack('>H', 14, 16)
+        total_image_items = unpack('>H', 14, 16)
+        # file_length = unpack('>Q', 16, 24])
+
+        # Canvas width and height
+        self.canvas = [
+            unpack('>d', 112, 120),
+            unpack('>d', 120, 128),
+            unpack('>d', 128, 136),
+            unpack('>d', 136, 144)
+        ]
+        self.zoom = unpack('>d', 144, 152)
+        self.xCanvas, self.yCanvas = unpack('>i', 216, 220), unpack('>i', 220, 224)
+
+        # Done reading header, remove and update readPin
         erase(224)
 
         # Read all original images, and any duplicates along the way
@@ -177,87 +179,88 @@ class PurFile:
         # Read all GraphicsImageItems and GraphicsTextItems, they are in the order they were added
         #
         ###
-        while struct.unpack(">I", pur_bytes[8:12])[0] == 34 or struct.unpack(">I", pur_bytes[8:12])[0] == 32:
-            if struct.unpack(">I", pur_bytes[8:12])[0] == 34:
-                transform_end = struct.unpack(">Q", pur_bytes[0:8])[0]
+        while unpack(">I", 8, 12) == 34 or unpack(">I", 8, 12) == 32:
+            if unpack(">I", 8, 12) == 34:
+                transform_end = unpack(">Q", 0, 8)
                 transform = PurGraphicsImageItem()
-                if struct.unpack(">I", pur_bytes[8:12])[0] != 34:
+
+                if unpack(">I", 8, 12) != 34:
                     print("Read Error! expected GraphicsImageItem")
 
                 # Remove imageItem standard text
-                erase(12 + struct.unpack(">I", pur_bytes[8:12])[0])
+                erase(12 + unpack(">I", 8, 12))
 
                 # Check if bruteforceloaded
                 brute_force_loaded = False
-                if struct.unpack(">I", pur_bytes[0:4])[0] == 0:
+                if unpack(">I", 0, 4) == 0:
                     brute_force_loaded = True
                     erase(4)
                     print("BruteForceLoad")
 
                 # Read&Remove source
-                if struct.unpack(">i", pur_bytes[0:4])[0] == -1:
+                if unpack(">i", 0, 4) == -1:
                     erase(4)
                 else:
-                    transform.source = pur_bytes[4:4 + struct.unpack(">I", pur_bytes[0:4])[0]].decode("utf-8", errors="replace")
-                    erase(4 + struct.unpack(">I", pur_bytes[0:4])[0])
+                    transform.source = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-8", errors="replace")
+                    erase(4 + unpack(">I", 0, 4))
 
                 # Read&Remove name
                 if not brute_force_loaded:
-                    if struct.unpack(">i", pur_bytes[0:4])[0] == -1:
+                    if unpack(">i", 0, 4) == -1:
                         erase(4)
                     else:
-                        transform.name = pur_bytes[4:4 + struct.unpack(">I", pur_bytes[0:4])[0]].decode("utf-8", errors="replace")
-                        erase(4 + struct.unpack(">I", pur_bytes[0:4])[0])
+                        transform.name = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-8", errors="replace")
+                        erase(4 + unpack(">I", 0, 4))
 
                 # Unknown permanent 1.0 float we don't want
-                if struct.unpack('>d', pur_bytes[0:8])[0] != 1.0:
-                    print("Notice: mysterious permanent float is not 1.0 (investigate?) ", struct.unpack('>d', pur_bytes[0:8])[0])
+                if unpack(">d", 0, 8) != 1.0:
+                    print("Notice: mysterious permanent float is not 1.0 (investigate?) ", unpack(">d", 0, 8))
                 erase(8)
 
                 # Time for matrix for scaling & rotation
-                transform.matrix[0] = struct.unpack('>d', pur_bytes[0:8])[0]
+                transform.matrix[0] = unpack(">d", 0, 8)
                 erase(8)
-                transform.matrix[1] = struct.unpack('>d', pur_bytes[0:8])[0]
+                transform.matrix[1] = unpack(">d", 0, 8)
                 erase(16)
-                transform.matrix[2] = struct.unpack('>d', pur_bytes[0:8])[0]
+                transform.matrix[2] = unpack(">d", 0, 8)
                 erase(8)
-                transform.matrix[3] = struct.unpack('>d', pur_bytes[0:8])[0]
+                transform.matrix[3] = unpack(">d", 0, 8)
                 erase(16)
 
                 # Location
-                transform.x = struct.unpack('>d', pur_bytes[0:8])[0]
+                transform.x = unpack(">d", 0, 8)
                 erase(8)
-                transform.y = struct.unpack('>d', pur_bytes[0:8])[0]
+                transform.y = unpack(">d", 0, 8)
                 erase(8)
 
                 # Second unknown permanent 1.0 float we don't want
-                if struct.unpack('>d', pur_bytes[0:8])[0] != 1.0:
-                    print("Notice: mysterious permanent float2 is not 1.0 (investigate?) ", struct.unpack('>d', pur_bytes[0:8])[0])
+                if unpack(">d", 0, 8) != 1.0:
+                    print("Notice: mysterious permanent float2 is not 1.0 (investigate?) ", unpack(">d", 0, 8))
                 erase(8)
 
                 # ID and Zlayer
-                transform.id = struct.unpack(">I", pur_bytes[0:4])[0]
-                transform.zLayer = struct.unpack(">d", pur_bytes[4:12])[0]
+                transform.id = unpack(">I", 0, 4)
+                transform.zLayer = unpack(">d", 4, 12)
                 erase(12)
 
                 # Time for matrixBeforeCrop for scaling & rotation
-                transform.matrixBeforeCrop[0] = struct.unpack('>d', pur_bytes[0:8])[0]
+                transform.matrixBeforeCrop[0] = unpack(">d", 0, 8)
                 erase(8)
-                transform.matrixBeforeCrop[1] = struct.unpack('>d', pur_bytes[0:8])[0]
+                transform.matrixBeforeCrop[1] = unpack(">d", 0, 8)
                 erase(16)
-                transform.matrixBeforeCrop[2] = struct.unpack('>d', pur_bytes[0:8])[0]
+                transform.matrixBeforeCrop[2] = unpack(">d", 0, 8)
                 erase(8)
-                transform.matrixBeforeCrop[3] = struct.unpack('>d', pur_bytes[0:8])[0]
+                transform.matrixBeforeCrop[3] = unpack(">d", 0, 8)
                 erase(16)
 
                 # Location before crop
-                transform.xCrop = struct.unpack('>d', pur_bytes[0:8])[0]
+                transform.xCrop = unpack(">d", 0, 8)
                 erase(8)
-                transform.yCrop = struct.unpack('>d', pur_bytes[0:8])[0]
+                transform.yCrop = unpack(">d", 0, 8)
                 erase(8)
 
                 # Finally crop scale
-                transform.scaleCrop = struct.unpack('>d', pur_bytes[0:8])[0]
+                transform.scaleCrop = unpack(">d", 0, 8)
                 erase(8)
 
                 #
@@ -265,13 +268,13 @@ class PurFile:
                 #
                 # Why are there n+1? No idea but the first seems to be a copy of the last, maybe it's offset
                 #
-                point_count = struct.unpack(">I", pur_bytes[0:4])[0]
+                point_count = unpack(">I", 0, 4)
                 erase(4)
 
                 points_replace = [[], []]
                 for i in range(point_count):
-                    points_replace[0].append(struct.unpack('>d', pur_bytes[4:12])[0])
-                    points_replace[1].append(struct.unpack('>d', pur_bytes[12:20])[0])
+                    points_replace[0].append(unpack(">d", 4, 12))
+                    points_replace[1].append(unpack(">d", 12, 20))
                     erase(20)
                 transform.points = points_replace
 
@@ -282,61 +285,61 @@ class PurFile:
             #
             # Text item
             #
-            elif struct.unpack(">I", pur_bytes[8:12])[0] == 32:
-                text_end = struct.unpack(">Q", pur_bytes[0:8])[0]
+            elif unpack(">I", 8, 12) == 32:
+                text_end = unpack(">Q", 0, 8)
 
                 text_transform = PurGraphicsTextItem()
-                if struct.unpack(">I", pur_bytes[8:12])[0] != 32:
+                if unpack(">I", 8, 12) != 32:
                     print("Read Error! expected GraphicsTextItem")
 
                 # Remove textItem standard text
-                erase(12 + struct.unpack(">I", pur_bytes[8:12])[0])
+                erase(12 + unpack(">I", 8, 12))
                 # Read the text
-                text_transform.text = pur_bytes[4:4 + struct.unpack(">I", pur_bytes[0:4])[0]].decode("utf-8", errors="replace")
-                erase(4 + struct.unpack(">I", pur_bytes[0:4])[0])
+                text_transform.text = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-8", errors="replace")
+                erase(4 + unpack(">I", 0, 4))
                 # Time for matrix for scaling & rotation
-                text_transform.matrix[0] = struct.unpack('>d', pur_bytes[0:8])[0]
+                text_transform.matrix[0] = unpack(">d", 0, 8)
                 erase(8)
-                text_transform.matrix[1] = struct.unpack('>d', pur_bytes[0:8])[0]
+                text_transform.matrix[1] = unpack(">d", 0, 8)
                 erase(16)
-                text_transform.matrix[2] = struct.unpack('>d', pur_bytes[0:8])[0]
+                text_transform.matrix[2] = unpack(">d", 0, 8)
                 erase(8)
-                text_transform.matrix[3] = struct.unpack('>d', pur_bytes[0:8])[0]
+                text_transform.matrix[3] = unpack(">d", 0, 8)
                 erase(16)
 
                 # Location
-                text_transform.x = struct.unpack('>d', pur_bytes[0:8])[0]
+                text_transform.x = unpack(">d", 0, 8)
                 erase(8)
-                text_transform.y = struct.unpack('>d', pur_bytes[0:8])[0]
+                text_transform.y = unpack(">d", 0, 8)
                 erase(8)
 
                 # text unknown permanent 1.0 float we don't want
-                if struct.unpack('>d', pur_bytes[0:8])[0] != 1.0:
+                if unpack(">d", 0, 8) != 1.0:
                     print("Notice: mysterious text permanent float is not 1.0 (investigate?) ",
-                          struct.unpack('>d', pur_bytes[0:8])[0])
+                          unpack(">d", 0, 8))
                 erase(8)
 
                 # These have an id too
-                text_transform.id = struct.unpack('>I', pur_bytes[0:4])[0]
+                text_transform.id = unpack(">I", 0, 4)
                 erase(4)
 
                 # Z layer
-                text_transform.zLayer = struct.unpack('>d', pur_bytes[0:8])[0]
+                text_transform.zLayer = unpack(">d", 0, 8)
                 erase(8)
 
                 # byte indicating RGB or HSV
-                is_hsv = struct.unpack('>b', pur_bytes[0:1])[0] == 2
+                is_hsv = unpack('>b', 0, 1) == 2
                 erase(1)
 
                 # Opacity
-                text_transform.opacity = struct.unpack('>H', pur_bytes[0:2])[0]
+                text_transform.opacity = unpack(">H", 0, 2)
                 erase(2)
                 # RGB
-                text_transform.rgb[0] = struct.unpack('>H', pur_bytes[0:2])[0]
+                text_transform.rgb[0] = unpack(">H", 0, 2)
                 erase(2)
-                text_transform.rgb[1] = struct.unpack('>H', pur_bytes[0:2])[0]
+                text_transform.rgb[1] = unpack(">H", 0, 2)
                 erase(2)
-                text_transform.rgb[2] = struct.unpack('>H', pur_bytes[0:2])[0]
+                text_transform.rgb[2] = unpack(">H", 0, 2)
                 erase(2)
 
                 if is_hsv:
@@ -347,18 +350,18 @@ class PurFile:
                     text_transform.rgb[1] = int(text_transform.rgb[1] * 65535)
                     text_transform.rgb[2] = int(text_transform.rgb[2] * 65535)
                 # Unknown 2 bytes and is hsv byte
-                is_background_hsv = struct.unpack('>b', pur_bytes[2:3])[0] == 2
+                is_background_hsv = unpack(">b", 2, 3) == 2
                 erase(3)
 
                 # BackgroundOpacity
-                text_transform.opacityBackground = struct.unpack('>H', pur_bytes[0:2])[0]
+                text_transform.opacityBackground = unpack(">H", 0, 2)
                 erase(2)
                 # BackgroundRGB
-                text_transform.rgbBackground[0] = struct.unpack('>H', pur_bytes[0:2])[0]
+                text_transform.rgbBackground[0] = unpack(">H", 0, 2)
                 erase(2)
-                text_transform.rgbBackground[1] = struct.unpack('>H', pur_bytes[0:2])[0]
+                text_transform.rgbBackground[1] = unpack(">H", 0, 2)
                 erase(2)
-                text_transform.rgbBackground[2] = struct.unpack('>H', pur_bytes[0:2])[0]
+                text_transform.rgbBackground[2] = unpack(">H", 0, 2)
                 erase(2)
 
                 if is_background_hsv:
@@ -379,13 +382,13 @@ class PurFile:
         #   ImageItems are in ImageItems[] to link with images later
         #
 
-        self.folderLocation = pur_bytes[4:4+struct.unpack('>I', pur_bytes[0:4])[0]].decode("utf-8")
-        erase(4+struct.unpack('>I', pur_bytes[0:4])[0])
+        self.folderLocation = pur_bytes[4:4+unpack(">I", 0, 4)].decode("utf-8")
+        erase(4+unpack(">I", 0, 4))
 
         # Put transforms in images (including empty reference images)
         for i in range(total_image_items):
-            red_id = struct.unpack('>I', pur_bytes[0:4])[0]
-            ref_address = [struct.unpack('>Q', pur_bytes[4:12])[0], struct.unpack('>Q', pur_bytes[12:20])[0]]
+            red_id = unpack(">I", 0, 4)
+            ref_address = [unpack(">Q", 4, 12), unpack(">Q", 12, 20)]
             for item in image_items:
                 if red_id == item.id:
                     for image in self.images:
