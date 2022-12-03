@@ -128,6 +128,11 @@ class PurFile:
         def unpack(typ: str, begin: int, stop: int):
             return struct.unpack(typ, pur_bytes[begin:stop])[0]
 
+        def unpack_delete(typ: str):
+            val = unpack(typ, 0, struct.calcsize(typ))
+            erase(struct.calcsize(typ))
+            return val
+
         def unpack_matrix():
             matrix = [unpack(">d", 0, 8),
                       unpack(">d", 8, 16),
@@ -242,10 +247,8 @@ class PurFile:
                     transform.matrix = unpack_matrix()
 
                     # Location
-                    transform.x = unpack(">d", 0, 8)
-                    erase(8)
-                    transform.y = unpack(">d", 0, 8)
-                    erase(8)
+                    transform.x = unpack_delete(">d")
+                    transform.y = unpack_delete(">d")
 
                     # Second unknown permanent 1.0 float we don't want
                     if unpack(">d", 0, 8) != 1.0:
@@ -253,37 +256,31 @@ class PurFile:
                     erase(8)
 
                     # ID and Zlayer
-                    transform.id = unpack(">I", 0, 4)
-                    transform.zLayer = unpack(">d", 4, 12)
-                    erase(12)
+                    transform.id = unpack_delete(">I")
+                    transform.zLayer = unpack_delete(">d")
 
                     # Time for matrixBeforeCrop for scaling & rotation
                     transform.matrixBeforeCrop = unpack_matrix()
 
                     # Location before crop
-                    transform.xCrop = unpack(">d", 0, 8)
-                    erase(8)
-                    transform.yCrop = unpack(">d", 0, 8)
-                    erase(8)
+                    transform.xCrop = unpack_delete(">d")
+                    transform.yCrop = unpack_delete(">d")
 
                     # Finally crop scale
-                    transform.scaleCrop = unpack(">d", 0, 8)
-                    erase(8)
+                    transform.scaleCrop = unpack_delete(">d")
 
                     #
                     # Points of crop
                     #
                     # Why are there n+1? No idea but the first seems to be a copy of the last, maybe it's offset
                     #
-                    point_count = unpack(">I", 0, 4)
-                    erase(4)
+                    point_count = unpack_delete(">I")
 
-                    points_replace = [[], []]
+                    transform.points = [[], []]
                     for _ in range(point_count):
-                        points_replace[0].append(unpack(">d", 4, 12))
-                        points_replace[1].append(unpack(">d", 12, 20))
-                        erase(20)
-                    transform.points = points_replace
+                        erase(4)
+                        transform.points[0].append(unpack_delete(">d"))
+                        transform.points[1].append(unpack_delete(">d"))
 
                     erase(transform_end - read_pin)
 
@@ -308,10 +305,8 @@ class PurFile:
                     text_transform.matrix = unpack_matrix()
 
                     # Location
-                    text_transform.x = unpack(">d", 0, 8)
-                    erase(8)
-                    text_transform.y = unpack(">d", 0, 8)
-                    erase(8)
+                    text_transform.x = unpack_delete(">d")
+                    text_transform.y = unpack_delete(">d")
 
                     # text unknown permanent 1.0 float we don't want
                     if unpack(">d", 0, 8) != 1.0:
@@ -320,27 +315,20 @@ class PurFile:
                     erase(8)
 
                     # These have an id too
-                    text_transform.id = unpack(">I", 0, 4)
-                    erase(4)
+                    text_transform.id = unpack_delete(">I")
 
                     # Z layer
-                    text_transform.zLayer = unpack(">d", 0, 8)
-                    erase(8)
+                    text_transform.zLayer = unpack_delete(">d")
 
                     # byte indicating RGB or HSV
-                    is_hsv = unpack('>b', 0, 1) == 2
-                    erase(1)
+                    is_hsv = unpack_delete('>b') == 2
 
                     # Opacity
-                    text_transform.opacity = unpack(">H", 0, 2)
-                    erase(2)
+                    text_transform.opacity = unpack_delete(">H")
                     # RGB
-                    text_transform.rgb[0] = unpack(">H", 0, 2)
-                    erase(2)
-                    text_transform.rgb[1] = unpack(">H", 0, 2)
-                    erase(2)
-                    text_transform.rgb[2] = unpack(">H", 0, 2)
-                    erase(2)
+                    text_transform.rgb[0] = unpack_delete(">H")
+                    text_transform.rgb[1] = unpack_delete(">H")
+                    text_transform.rgb[2] = unpack_delete(">H")
 
                     if is_hsv:
                         text_transform.rgb = list(colorsys.hsv_to_rgb((text_transform.rgb[0]) / 35900,
@@ -350,19 +338,15 @@ class PurFile:
                         text_transform.rgb[1] = int(text_transform.rgb[1] * 65535)
                         text_transform.rgb[2] = int(text_transform.rgb[2] * 65535)
                     # Unknown 2 bytes and is hsv byte
-                    is_background_hsv = unpack(">b", 2, 3) == 2
-                    erase(3)
+                    erase(2)
+                    is_background_hsv = unpack_delete(">b") == 2
 
                     # BackgroundOpacity
-                    text_transform.opacityBackground = unpack(">H", 0, 2)
-                    erase(2)
+                    text_transform.opacityBackground = unpack_delete(">H")
                     # BackgroundRGB
-                    text_transform.rgbBackground[0] = unpack(">H", 0, 2)
-                    erase(2)
-                    text_transform.rgbBackground[1] = unpack(">H", 0, 2)
-                    erase(2)
-                    text_transform.rgbBackground[2] = unpack(">H", 0, 2)
-                    erase(2)
+                    text_transform.rgbBackground[0] = unpack_delete(">H")
+                    text_transform.rgbBackground[1] = unpack_delete(">H")
+                    text_transform.rgbBackground[2] = unpack_delete(">H")
 
                     if is_background_hsv:
                         text_transform.rgbBackground = list(colorsys.hsv_to_rgb(
