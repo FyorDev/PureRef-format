@@ -116,6 +116,7 @@ class PurFile:
     def read(self, file: str):
         pur_bytes = bytearray(open(file, "rb").read())
         read_pin = 0
+        total_image_items = 0
 
         def erase(length):
             pur_bytes[0:length] = []
@@ -125,53 +126,79 @@ class PurFile:
         def unpack(typ: str, begin: int, stop: int):
             return struct.unpack(typ, pur_bytes[begin:stop])[0]
 
-        total_text_items = unpack('>H', 12, 14) - unpack('>H', 14, 16)
-        total_image_items = unpack('>H', 14, 16)
-        # file_length = unpack('>Q', 16, 24])
+        def unpack_matrix():
+            matrix = []
 
-        # Canvas width and height
-        self.canvas = [
-            unpack('>d', 112, 120),
-            unpack('>d', 120, 128),
-            unpack('>d', 128, 136),
-            unpack('>d', 136, 144)
-        ]
-        self.zoom = unpack('>d', 144, 152)
-        self.xCanvas, self.yCanvas = unpack('>i', 216, 220), unpack('>i', 220, 224)
+            matrix.append(unpack(">d", 0, 8))
+            erase(8)
+            matrix.append(unpack(">d", 0, 8))
+            erase(16)
+            matrix.append(unpack(">d", 0, 8))
+            erase(8)
+            matrix.append(unpack(">d", 0, 8))
+            erase(16)
 
-        # Done reading header, remove and update readPin
-        erase(224)
+            return matrix
 
-        # Read all original images, and any duplicates along the way
-        while pur_bytes.__contains__(bytearray([137, 80, 78, 71,   13, 10, 26, 10])):
-            start = pur_bytes.find(bytearray([137, 80, 78, 71,   13, 10, 26, 10]))
-            end = pur_bytes.find(bytearray([0, 0, 0, 0,   73, 69, 78, 68,   174, 66, 96, 130])) + 12
-            if start >= 4:  # There is a duplicate before the next original image
-                image = PurImage()
-                image.address = [read_pin, 4+read_pin]
-                image.pngBinary = pur_bytes[0: 4]
-                self.images.append(image)
+        def read_header():
+            # total_text_items = unpack('>H', 12, 14) - unpack('>H', 14, 16)
+            nonlocal total_image_items
+            total_image_items = unpack('>H', 14, 16)
+            # file_length = unpack('>Q', 16, 24])
+
+            # Canvas width and height
+            self.canvas = [
+                unpack('>d', 112, 120),
+                unpack('>d', 120, 128),
+                unpack('>d', 128, 136),
+                unpack('>d', 136, 144)
+            ]
+            self.zoom = unpack('>d', 144, 152)
+            self.xCanvas, self.yCanvas = unpack('>i', 216, 220), unpack('>i', 220, 224)
+
+            # Done reading header, remove and update readPin
+            erase(224)
+
+        def read_images():
+            png_head = bytearray([137, 80, 78, 71, 13, 10, 26, 10])  # PNG header
+            png_foot = bytearray([0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130])  # PNG footer
+
+            # Read all original images, and any duplicates along the way
+            while pur_bytes.__contains__(png_head):
+
+                start = pur_bytes.find(png_head)
+                end = pur_bytes.find(png_foot) + 12
+
+                if start >= 4:  # There is a duplicate before the next original image
+                    image_add = PurImage()
+                    image_add.address = [read_pin, 4 + read_pin]
+                    image_add.pngBinary = pur_bytes[0: 4]
+                    self.images.append(image_add)
+
+                    erase(4)
+                else:
+                    image_add = PurImage()
+                    image_add.address = [start + read_pin, end + read_pin]
+                    image_add.pngBinary = pur_bytes[start: end]
+                    self.images.append(image_add)
+
+                    erase(end)
+
+            # Put duplicate images IDs in images too for later sorting
+            # (duplicates = totalImageItems - images.count)
+            # pngBinary here is not an actual PNG but the 4 byte ID of the transform that does have the PNG
+            # after transforms are put in their images by address we can merge the duplicates
+            for _ in range(total_image_items - len(self.images)):
+                image_add = PurImage()
+                image_add.address = [read_pin, 4 + read_pin]
+                image_add.pngBinary = pur_bytes[0: 4]
+                self.images.append(image_add)
 
                 erase(4)
-            else:
-                image = PurImage()
-                image.address = [start+read_pin, end+read_pin]
-                image.pngBinary = pur_bytes[start: end]
-                self.images.append(image)
 
-                erase(end)
+        read_header()
 
-        # Put duplicate images IDs in images too for later sorting
-        # (duplicates = totalImageItems - images.count)
-        # pngBinary here is not an actual PNG but the 4 byte ID of the transform that does have the PNG
-        # after transforms are put in their images by address we can merge the duplicate transforms into the real images
-        for i in range(total_image_items - len(self.images)):
-            image = PurImage()
-            image.address = [read_pin, 4+read_pin]
-            image.pngBinary = pur_bytes[0: 4]
-            self.images.append(image)
-
-            erase(4)
+        read_images()
 
         image_items = []
         ###
@@ -218,14 +245,7 @@ class PurFile:
                 erase(8)
 
                 # Time for matrix for scaling & rotation
-                transform.matrix[0] = unpack(">d", 0, 8)
-                erase(8)
-                transform.matrix[1] = unpack(">d", 0, 8)
-                erase(16)
-                transform.matrix[2] = unpack(">d", 0, 8)
-                erase(8)
-                transform.matrix[3] = unpack(">d", 0, 8)
-                erase(16)
+                transform.matrix = unpack_matrix()
 
                 # Location
                 transform.x = unpack(">d", 0, 8)
@@ -244,14 +264,7 @@ class PurFile:
                 erase(12)
 
                 # Time for matrixBeforeCrop for scaling & rotation
-                transform.matrixBeforeCrop[0] = unpack(">d", 0, 8)
-                erase(8)
-                transform.matrixBeforeCrop[1] = unpack(">d", 0, 8)
-                erase(16)
-                transform.matrixBeforeCrop[2] = unpack(">d", 0, 8)
-                erase(8)
-                transform.matrixBeforeCrop[3] = unpack(">d", 0, 8)
-                erase(16)
+                transform.matrixBeforeCrop = unpack_matrix()
 
                 # Location before crop
                 transform.xCrop = unpack(">d", 0, 8)
@@ -298,14 +311,7 @@ class PurFile:
                 text_transform.text = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-8", errors="replace")
                 erase(4 + unpack(">I", 0, 4))
                 # Time for matrix for scaling & rotation
-                text_transform.matrix[0] = unpack(">d", 0, 8)
-                erase(8)
-                text_transform.matrix[1] = unpack(">d", 0, 8)
-                erase(16)
-                text_transform.matrix[2] = unpack(">d", 0, 8)
-                erase(8)
-                text_transform.matrix[3] = unpack(">d", 0, 8)
-                erase(16)
+                text_transform.matrix = unpack_matrix()
 
                 # Location
                 text_transform.x = unpack(">d", 0, 8)
