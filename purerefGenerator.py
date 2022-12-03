@@ -43,8 +43,8 @@ def generate(read_folder, write_file):
 
         pur_transform = purerefReverse.PurGraphicsImageItem()
         pur_transform.reset_crop(image.width, image.height)
-        pur_transform.set_name(file.replace(".jpg", ""))
-        pur_transform.set_source(read_folder + "/" + file)
+        pur_transform.name = file.replace(".jpg", "")
+        pur_transform.source = read_folder + "/" + file
         pur_image.transforms = [pur_transform]  # The first transform is the original one, the rest are duplicates
         # If this is somehow messed up, it doesn't matter. Another transform will be made the "original" one.
 
