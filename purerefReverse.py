@@ -117,6 +117,7 @@ class PurFile:
         pur_bytes = bytearray(open(file, "rb").read())
         read_pin = 0
         total_image_items = 0
+        image_items = []
 
         def erase(length):
             pur_bytes[0:length] = []
@@ -127,17 +128,12 @@ class PurFile:
             return struct.unpack(typ, pur_bytes[begin:stop])[0]
 
         def unpack_matrix():
-            matrix = []
+            matrix = [unpack(">d", 0, 8),
+                      unpack(">d", 8, 16),
+                      unpack(">d", 24, 32),
+                      unpack(">d", 32, 40)]
 
-            matrix.append(unpack(">d", 0, 8))
-            erase(8)
-            matrix.append(unpack(">d", 0, 8))
-            erase(16)
-            matrix.append(unpack(">d", 0, 8))
-            erase(8)
-            matrix.append(unpack(">d", 0, 8))
-            erase(16)
-
+            erase(48)
             return matrix
 
         def read_header():
@@ -196,197 +192,200 @@ class PurFile:
 
                 erase(4)
 
+        def read_items():
+
+            ###
+            #
+            # Read all GraphicsImageItems and GraphicsTextItems, they are in the order they were added
+            #
+            ###
+            while unpack(">I", 8, 12) == 34 or unpack(">I", 8, 12) == 32:
+                if unpack(">I", 8, 12) == 34:
+                    transform_end = unpack(">Q", 0, 8)
+                    transform = PurGraphicsImageItem()
+
+                    if unpack(">I", 8, 12) != 34:
+                        print("Read Error! expected GraphicsImageItem")
+
+                    # Remove imageItem standard text
+                    erase(12 + unpack(">I", 8, 12))
+
+                    # Check if bruteforceloaded
+                    brute_force_loaded = False
+                    if unpack(">I", 0, 4) == 0:
+                        brute_force_loaded = True
+                        erase(4)
+                        print("BruteForceLoad")
+
+                    # Read&Remove source
+                    if unpack(">i", 0, 4) == -1:
+                        erase(4)
+                    else:
+                        transform.source = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-8", errors="replace")
+                        erase(4 + unpack(">I", 0, 4))
+
+                    # Read&Remove name
+                    if not brute_force_loaded:
+                        if unpack(">i", 0, 4) == -1:
+                            erase(4)
+                        else:
+                            transform.name = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-8", errors="replace")
+                            erase(4 + unpack(">I", 0, 4))
+
+                    # Unknown permanent 1.0 float we don't want
+                    if unpack(">d", 0, 8) != 1.0:
+                        print("Notice: mysterious permanent float is not 1.0 (investigate?) ", unpack(">d", 0, 8))
+                    erase(8)
+
+                    # Time for matrix for scaling & rotation
+                    transform.matrix = unpack_matrix()
+
+                    # Location
+                    transform.x = unpack(">d", 0, 8)
+                    erase(8)
+                    transform.y = unpack(">d", 0, 8)
+                    erase(8)
+
+                    # Second unknown permanent 1.0 float we don't want
+                    if unpack(">d", 0, 8) != 1.0:
+                        print("Notice: mysterious permanent float2 is not 1.0 (investigate?) ", unpack(">d", 0, 8))
+                    erase(8)
+
+                    # ID and Zlayer
+                    transform.id = unpack(">I", 0, 4)
+                    transform.zLayer = unpack(">d", 4, 12)
+                    erase(12)
+
+                    # Time for matrixBeforeCrop for scaling & rotation
+                    transform.matrixBeforeCrop = unpack_matrix()
+
+                    # Location before crop
+                    transform.xCrop = unpack(">d", 0, 8)
+                    erase(8)
+                    transform.yCrop = unpack(">d", 0, 8)
+                    erase(8)
+
+                    # Finally crop scale
+                    transform.scaleCrop = unpack(">d", 0, 8)
+                    erase(8)
+
+                    #
+                    # Points of crop
+                    #
+                    # Why are there n+1? No idea but the first seems to be a copy of the last, maybe it's offset
+                    #
+                    point_count = unpack(">I", 0, 4)
+                    erase(4)
+
+                    points_replace = [[], []]
+                    for _ in range(point_count):
+                        points_replace[0].append(unpack(">d", 4, 12))
+                        points_replace[1].append(unpack(">d", 12, 20))
+                        erase(20)
+                    transform.points = points_replace
+
+                    erase(transform_end - read_pin)
+
+                    image_items.append(transform)
+
+                #
+                # Text item
+                #
+                elif unpack(">I", 8, 12) == 32:
+                    text_end = unpack(">Q", 0, 8)
+
+                    text_transform = PurGraphicsTextItem()
+                    if unpack(">I", 8, 12) != 32:
+                        print("Read Error! expected GraphicsTextItem")
+
+                    # Remove textItem standard text
+                    erase(12 + unpack(">I", 8, 12))
+                    # Read the text
+                    text_transform.text = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-8", errors="replace")
+                    erase(4 + unpack(">I", 0, 4))
+                    # Time for matrix for scaling & rotation
+                    text_transform.matrix = unpack_matrix()
+
+                    # Location
+                    text_transform.x = unpack(">d", 0, 8)
+                    erase(8)
+                    text_transform.y = unpack(">d", 0, 8)
+                    erase(8)
+
+                    # text unknown permanent 1.0 float we don't want
+                    if unpack(">d", 0, 8) != 1.0:
+                        print("Notice: mysterious text permanent float is not 1.0 (investigate?) ",
+                              unpack(">d", 0, 8))
+                    erase(8)
+
+                    # These have an id too
+                    text_transform.id = unpack(">I", 0, 4)
+                    erase(4)
+
+                    # Z layer
+                    text_transform.zLayer = unpack(">d", 0, 8)
+                    erase(8)
+
+                    # byte indicating RGB or HSV
+                    is_hsv = unpack('>b', 0, 1) == 2
+                    erase(1)
+
+                    # Opacity
+                    text_transform.opacity = unpack(">H", 0, 2)
+                    erase(2)
+                    # RGB
+                    text_transform.rgb[0] = unpack(">H", 0, 2)
+                    erase(2)
+                    text_transform.rgb[1] = unpack(">H", 0, 2)
+                    erase(2)
+                    text_transform.rgb[2] = unpack(">H", 0, 2)
+                    erase(2)
+
+                    if is_hsv:
+                        text_transform.rgb = list(colorsys.hsv_to_rgb((text_transform.rgb[0]) / 35900,
+                                                                      (text_transform.rgb[1]) / 65535,
+                                                                      (text_transform.rgb[2]) / 65535))
+                        text_transform.rgb[0] = int(text_transform.rgb[0] * 65535)
+                        text_transform.rgb[1] = int(text_transform.rgb[1] * 65535)
+                        text_transform.rgb[2] = int(text_transform.rgb[2] * 65535)
+                    # Unknown 2 bytes and is hsv byte
+                    is_background_hsv = unpack(">b", 2, 3) == 2
+                    erase(3)
+
+                    # BackgroundOpacity
+                    text_transform.opacityBackground = unpack(">H", 0, 2)
+                    erase(2)
+                    # BackgroundRGB
+                    text_transform.rgbBackground[0] = unpack(">H", 0, 2)
+                    erase(2)
+                    text_transform.rgbBackground[1] = unpack(">H", 0, 2)
+                    erase(2)
+                    text_transform.rgbBackground[2] = unpack(">H", 0, 2)
+                    erase(2)
+
+                    if is_background_hsv:
+                        text_transform.rgbBackground = list(colorsys.hsv_to_rgb(
+                            (text_transform.rgbBackground[0]) / 35900,
+                            (text_transform.rgbBackground[1]) / 65535,
+                            (text_transform.rgbBackground[2]) / 65535))
+                        text_transform.rgbBackground[0] = int(text_transform.rgbBackground[0] * 65535)
+                        text_transform.rgbBackground[1] = int(text_transform.rgbBackground[1] * 65535)
+                        text_transform.rgbBackground[2] = int(text_transform.rgbBackground[2] * 65535)
+                    self.text.append(text_transform)
+                    erase(text_end - read_pin)
+                else:
+                    print("Error! Unknown item")
+                    break
+
+        ################################################################################################################
+        # Read the PureRef file
+        ################################################################################################################
+
         read_header()
 
         read_images()
 
-        image_items = []
-        ###
-        #
-        # Read all GraphicsImageItems and GraphicsTextItems, they are in the order they were added
-        #
-        ###
-        while unpack(">I", 8, 12) == 34 or unpack(">I", 8, 12) == 32:
-            if unpack(">I", 8, 12) == 34:
-                transform_end = unpack(">Q", 0, 8)
-                transform = PurGraphicsImageItem()
-
-                if unpack(">I", 8, 12) != 34:
-                    print("Read Error! expected GraphicsImageItem")
-
-                # Remove imageItem standard text
-                erase(12 + unpack(">I", 8, 12))
-
-                # Check if bruteforceloaded
-                brute_force_loaded = False
-                if unpack(">I", 0, 4) == 0:
-                    brute_force_loaded = True
-                    erase(4)
-                    print("BruteForceLoad")
-
-                # Read&Remove source
-                if unpack(">i", 0, 4) == -1:
-                    erase(4)
-                else:
-                    transform.source = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-8", errors="replace")
-                    erase(4 + unpack(">I", 0, 4))
-
-                # Read&Remove name
-                if not brute_force_loaded:
-                    if unpack(">i", 0, 4) == -1:
-                        erase(4)
-                    else:
-                        transform.name = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-8", errors="replace")
-                        erase(4 + unpack(">I", 0, 4))
-
-                # Unknown permanent 1.0 float we don't want
-                if unpack(">d", 0, 8) != 1.0:
-                    print("Notice: mysterious permanent float is not 1.0 (investigate?) ", unpack(">d", 0, 8))
-                erase(8)
-
-                # Time for matrix for scaling & rotation
-                transform.matrix = unpack_matrix()
-
-                # Location
-                transform.x = unpack(">d", 0, 8)
-                erase(8)
-                transform.y = unpack(">d", 0, 8)
-                erase(8)
-
-                # Second unknown permanent 1.0 float we don't want
-                if unpack(">d", 0, 8) != 1.0:
-                    print("Notice: mysterious permanent float2 is not 1.0 (investigate?) ", unpack(">d", 0, 8))
-                erase(8)
-
-                # ID and Zlayer
-                transform.id = unpack(">I", 0, 4)
-                transform.zLayer = unpack(">d", 4, 12)
-                erase(12)
-
-                # Time for matrixBeforeCrop for scaling & rotation
-                transform.matrixBeforeCrop = unpack_matrix()
-
-                # Location before crop
-                transform.xCrop = unpack(">d", 0, 8)
-                erase(8)
-                transform.yCrop = unpack(">d", 0, 8)
-                erase(8)
-
-                # Finally crop scale
-                transform.scaleCrop = unpack(">d", 0, 8)
-                erase(8)
-
-                #
-                # Points of crop
-                #
-                # Why are there n+1? No idea but the first seems to be a copy of the last, maybe it's offset
-                #
-                point_count = unpack(">I", 0, 4)
-                erase(4)
-
-                points_replace = [[], []]
-                for i in range(point_count):
-                    points_replace[0].append(unpack(">d", 4, 12))
-                    points_replace[1].append(unpack(">d", 12, 20))
-                    erase(20)
-                transform.points = points_replace
-
-                erase(transform_end - read_pin)
-
-                image_items.append(transform)
-
-            #
-            # Text item
-            #
-            elif unpack(">I", 8, 12) == 32:
-                text_end = unpack(">Q", 0, 8)
-
-                text_transform = PurGraphicsTextItem()
-                if unpack(">I", 8, 12) != 32:
-                    print("Read Error! expected GraphicsTextItem")
-
-                # Remove textItem standard text
-                erase(12 + unpack(">I", 8, 12))
-                # Read the text
-                text_transform.text = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-8", errors="replace")
-                erase(4 + unpack(">I", 0, 4))
-                # Time for matrix for scaling & rotation
-                text_transform.matrix = unpack_matrix()
-
-                # Location
-                text_transform.x = unpack(">d", 0, 8)
-                erase(8)
-                text_transform.y = unpack(">d", 0, 8)
-                erase(8)
-
-                # text unknown permanent 1.0 float we don't want
-                if unpack(">d", 0, 8) != 1.0:
-                    print("Notice: mysterious text permanent float is not 1.0 (investigate?) ",
-                          unpack(">d", 0, 8))
-                erase(8)
-
-                # These have an id too
-                text_transform.id = unpack(">I", 0, 4)
-                erase(4)
-
-                # Z layer
-                text_transform.zLayer = unpack(">d", 0, 8)
-                erase(8)
-
-                # byte indicating RGB or HSV
-                is_hsv = unpack('>b', 0, 1) == 2
-                erase(1)
-
-                # Opacity
-                text_transform.opacity = unpack(">H", 0, 2)
-                erase(2)
-                # RGB
-                text_transform.rgb[0] = unpack(">H", 0, 2)
-                erase(2)
-                text_transform.rgb[1] = unpack(">H", 0, 2)
-                erase(2)
-                text_transform.rgb[2] = unpack(">H", 0, 2)
-                erase(2)
-
-                if is_hsv:
-                    text_transform.rgb = list(colorsys.hsv_to_rgb((text_transform.rgb[0]) / 35900,
-                                                                  (text_transform.rgb[1]) / 65535,
-                                                                  (text_transform.rgb[2]) / 65535))
-                    text_transform.rgb[0] = int(text_transform.rgb[0] * 65535)
-                    text_transform.rgb[1] = int(text_transform.rgb[1] * 65535)
-                    text_transform.rgb[2] = int(text_transform.rgb[2] * 65535)
-                # Unknown 2 bytes and is hsv byte
-                is_background_hsv = unpack(">b", 2, 3) == 2
-                erase(3)
-
-                # BackgroundOpacity
-                text_transform.opacityBackground = unpack(">H", 0, 2)
-                erase(2)
-                # BackgroundRGB
-                text_transform.rgbBackground[0] = unpack(">H", 0, 2)
-                erase(2)
-                text_transform.rgbBackground[1] = unpack(">H", 0, 2)
-                erase(2)
-                text_transform.rgbBackground[2] = unpack(">H", 0, 2)
-                erase(2)
-
-                if is_background_hsv:
-                    text_transform.rgbBackground = list(colorsys.hsv_to_rgb((text_transform.rgbBackground[0]) / 35900,
-                                                                            (text_transform.rgbBackground[1]) / 65535,
-                                                                            (text_transform.rgbBackground[2]) / 65535))
-                    text_transform.rgbBackground[0] = int(text_transform.rgbBackground[0] * 65535)
-                    text_transform.rgbBackground[1] = int(text_transform.rgbBackground[1] * 65535)
-                    text_transform.rgbBackground[2] = int(text_transform.rgbBackground[2] * 65535)
-                self.text.append(text_transform)
-                erase(text_end - read_pin)
-            else:
-                print("Error! Unknown item")
-                break
-
-        #
-        #   All items done!
-        #   ImageItems are in ImageItems[] to link with images later
-        #
+        read_items()
 
         self.folderLocation = pur_bytes[4:4+unpack(">I", 0, 4)].decode("utf-8")
         erase(4+unpack(">I", 0, 4))
