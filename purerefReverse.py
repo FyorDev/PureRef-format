@@ -14,7 +14,9 @@ class PurGraphicsTextItem:
         self.zLayer = 1.0
         self.id = 0
         self.opacity = 65535
-        self.rgb = [65535, 65535, 65535]
+        self.rgb = [65535,
+                    65535,
+                    65535]
         self.opacityBackground = 5000
         self.rgbBackground = [0, 0, 0]
 
@@ -58,7 +60,7 @@ class PurImage:
         # original location for identification
         self.address = [0, 0]
         # image data
-        self.pngBinary: bytearray = bytearray()
+        self.pngBinary = bytearray()
         # transforms[] for multiple instances
         self.transforms = []
 
@@ -106,20 +108,20 @@ class PurFile:
         total_image_items = 0
         image_items = []
 
-        def erase(length):
+        def erase(length):  # Remove n bytes from bytearray
             pur_bytes[0:length] = []
             nonlocal read_pin
             read_pin += length
 
-        def unpack(typ: str, begin: int, stop: int):
+        def unpack(typ: str, begin: int, stop: int):  # Bytes to type
             return struct.unpack(typ, pur_bytes[begin:stop])[0]
 
-        def unpack_delete(typ: str):
+        def unpack_delete(typ: str):  # Unpack typ and remove from pur_bytes
             val = unpack(typ, 0, struct.calcsize(typ))
             erase(struct.calcsize(typ))
             return val
 
-        def unpack_matrix():
+        def unpack_matrix():  # Unpack and delete a matrix
             matrix = [unpack(">d", 0, 8),
                       unpack(">d", 8, 16),
                       unpack(">d", 24, 32),
@@ -185,26 +187,21 @@ class PurFile:
                 erase(4)
 
         def read_items():
+            graphics_image_item = 34
+            graphics_text_item = 32
 
-            ###
-            #
             # Read all GraphicsImageItems and GraphicsTextItems, they are in the order they were added
-            #
-            ###
-            while unpack(">I", 8, 12) == 34 or unpack(">I", 8, 12) == 32:
-                if unpack(">I", 8, 12) == 34:
-                    transform_end = unpack(">Q", 0, 8)
+            while unpack(">I", 8, 12) == graphics_image_item or unpack(">I", 8, 12) == graphics_text_item:
+
+                transform_end = unpack(">Q", 0, 8)  # End address of either image or text transform
+
+                if unpack(">I", 8, 12) == graphics_image_item:
+
                     transform = PurGraphicsImageItem()
+                    erase(12 + unpack(">I", 8, 12))  # Remove imageItem standard text
 
-                    if unpack(">I", 8, 12) != 34:
-                        print("Read Error! expected GraphicsImageItem")
-
-                    # Remove imageItem standard text
-                    erase(12 + unpack(">I", 8, 12))
-
-                    # Check if bruteforceloaded
                     brute_force_loaded = False
-                    if unpack(">I", 0, 4) == 0:
+                    if unpack(">I", 0, 4) == 0:  # Check if bruteforceloaded
                         brute_force_loaded = True
                         erase(4)
                         print("BruteForceLoad")
@@ -229,11 +226,8 @@ class PurFile:
                         print("Notice: mysterious permanent float is not 1.0 (investigate?) ", unpack(">d", 0, 8))
                     erase(8)
 
-                    # Time for matrix for scaling & rotation
-                    transform.matrix = unpack_matrix()
-
-                    # Location
-                    transform.x = unpack_delete(">d")
+                    transform.matrix = unpack_matrix()  # Scaling and rotation matrix
+                    transform.x = unpack_delete(">d")  # Location
                     transform.y = unpack_delete(">d")
 
                     # Second unknown permanent 1.0 float we don't want
@@ -241,49 +235,34 @@ class PurFile:
                         print("Notice: mysterious permanent float2 is not 1.0 (investigate?) ", unpack(">d", 0, 8))
                     erase(8)
 
-                    # ID and Zlayer
                     transform.id = unpack_delete(">I")
                     transform.zLayer = unpack_delete(">d")
-
-                    # Time for matrixBeforeCrop for scaling & rotation
-                    transform.matrixBeforeCrop = unpack_matrix()
-
-                    # Location before crop
-                    transform.xCrop = unpack_delete(">d")
+                    transform.matrixBeforeCrop = unpack_matrix()  # Time for matrixBeforeCrop for scaling & rotation
+                    transform.xCrop = unpack_delete(">d")  # Location before crop
                     transform.yCrop = unpack_delete(">d")
+                    transform.scaleCrop = unpack_delete(">d")  # Finally crop scale
 
-                    # Finally crop scale
-                    transform.scaleCrop = unpack_delete(">d")
-
-                    #
                     # Points of crop
-                    #
                     # Why are there n+1? No idea but the first seems to be a copy of the last, maybe it's offset
-                    #
                     point_count = unpack_delete(">I")
-
                     transform.points = [[], []]
+
                     for _ in range(point_count):
                         erase(4)
                         transform.points[0].append(unpack_delete(">d"))
                         transform.points[1].append(unpack_delete(">d"))
 
-                    erase(transform_end - read_pin)
-
+                    erase(transform_end - read_pin)  # Remove any bytes left in the transform
                     image_items.append(transform)
 
                 #
                 # Text item
                 #
-                elif unpack(">I", 8, 12) == 32:
-                    text_end = unpack(">Q", 0, 8)
+                elif unpack(">I", 8, 12) == graphics_text_item:
 
                     text_transform = PurGraphicsTextItem()
-                    if unpack(">I", 8, 12) != 32:
-                        print("Read Error! expected GraphicsTextItem")
+                    erase(12 + unpack(">I", 8, 12))  # Remove textItem standard text
 
-                    # Remove textItem standard text
-                    erase(12 + unpack(">I", 8, 12))
                     # Read the text
                     text_transform.text = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-16-be", errors="replace")
                     erase(4 + unpack(">I", 0, 4))
@@ -343,7 +322,7 @@ class PurFile:
                         text_transform.rgbBackground[1] = int(text_transform.rgbBackground[1] * 65535)
                         text_transform.rgbBackground[2] = int(text_transform.rgbBackground[2] * 65535)
                     self.text.append(text_transform)
-                    erase(text_end - read_pin)
+                    erase(transform_end - read_pin)
                 else:
                     print("Error! Unknown item")
                     break
@@ -549,7 +528,7 @@ class PurFile:
                     pur_bytes[transform_end:transform_end+8] = struct.pack(">Q", len(pur_bytes))
 
             #
-            #   DONE image transforms loaded
+            # DONE image transforms loaded
             #
 
             # Time for text
@@ -592,6 +571,10 @@ class PurFile:
 
                 # Start of transform needs its own end address
                 pur_bytes[transform_end:transform_end+8] = struct.pack(">Q", len(pur_bytes))
+
+        ################################################################################################################
+        # Write the PureRef file
+        ################################################################################################################
 
         write_header()  # Write header
 
