@@ -19,8 +19,7 @@ class PurGraphicsTextItem:
         self.rgbBackground = [0, 0, 0]
 
 
-# Encoding needed for all PureRef strings to work
-# I don't know what exactly they're using, but at least this will work for ASCII characters
+# TODO: BAD FUNCTION REPLACE WITH utf-16-be
 def encodestr(s: str):
     length = len(s)*2
     return (s.encode("utf-16-le")[length-1:length] +
@@ -403,6 +402,10 @@ class PurFile:
         pur_bytes = bytearray()
         references = []
 
+        def pack_add(typ: str, *args):
+            nonlocal pur_bytes
+            pur_bytes += struct.pack(typ, *args)
+
         def write_header():
             # A standard empty header for PureRef 1.11
             nonlocal pur_bytes
@@ -453,7 +456,7 @@ class PurFile:
                         references.append([transform_add.id, image_add.address[0], image_add.address[1]])
                     else:
                         references.append([transform_add.id, len(pur_bytes), len(pur_bytes) + 4])
-                        pur_bytes += bytearray(struct.pack(">i", parent.id))
+                        pack_add(">i", parent.id)
 
                     transform_num += 1
 
@@ -477,22 +480,22 @@ class PurFile:
                 for transform in transforms_ordered:
                     # transform_end prints current writePin for now to replace later
                     transform_end = len(pur_bytes)
-                    pur_bytes += bytearray(struct.pack(">Q", 0))
+                    pack_add(">Q", 0)
                     # Purimageitem text
                     brute_force_loaded = transform.source.encode == encodestr("brute_force_loaded")
-                    pur_bytes += struct.pack(">I", 34)
-                    pur_bytes += struct.pack(">b", 0)
+                    pack_add(">I", 34)
+                    pack_add(">b", 0)
                     pur_bytes += "GraphicsImageItem".encode("utf-16-le")
                     # Is bruteforceloaded there is an extra empty 8 byte
                     if brute_force_loaded:
-                        pur_bytes += struct.pack(">I", 0)
+                        pack_add(">I", 0)
                     # Source
                     pur_bytes[len(pur_bytes)-1:len(pur_bytes)] = struct.pack(">I", len(transform.source.encode("utf-8")))
                     pur_bytes += transform.source.encode("utf-8")
                     # Name (skipped if bruteforceloaded)
                     # PureRef can have empty names, but we have brute_force_loaded as default
                     if not brute_force_loaded:
-                        pur_bytes += struct.pack(">I", len(transform.name.encode("utf-8")))
+                        pack_add(">I", len(transform.name.encode("utf-8")))
                         pur_bytes += transform.name.encode("utf-8")
 
                     #
@@ -500,51 +503,51 @@ class PurFile:
                     #
 
                     # Mysterious 1.0 double
-                    pur_bytes += struct.pack(">d", 1.0)
+                    pack_add(">d", 1.0)
                     # Scaling matrix
-                    pur_bytes += struct.pack(">d", transform.matrix[0])
-                    pur_bytes += struct.pack(">d", transform.matrix[1])
-                    pur_bytes += struct.pack(">d", 0.0)
-                    pur_bytes += struct.pack(">d", transform.matrix[2])
-                    pur_bytes += struct.pack(">d", transform.matrix[3])
-                    pur_bytes += struct.pack(">d", 0.0)
+                    pack_add(">d", transform.matrix[0])
+                    pack_add(">d", transform.matrix[1])
+                    pack_add(">d", 0.0)
+                    pack_add(">d", transform.matrix[2])
+                    pack_add(">d", transform.matrix[3])
+                    pack_add(">d", 0.0)
                     # Location
-                    pur_bytes += struct.pack(">d", transform.x)
-                    pur_bytes += struct.pack(">d", transform.y)
+                    pack_add(">d", transform.x)
+                    pack_add(">d", transform.y)
                     # Mysterious 1.0 double
-                    pur_bytes += struct.pack(">d", 1.0)
+                    pack_add(">d", 1.0)
                     # ID and ZLayer
-                    pur_bytes += struct.pack(">I", transform.id)
-                    pur_bytes += struct.pack(">d", transform.zLayer)
+                    pack_add(">I", transform.id)
+                    pack_add(">d", transform.zLayer)
                     # MatrixBeforeCrop
-                    pur_bytes += struct.pack(">d", transform.matrixBeforeCrop[0])
-                    pur_bytes += struct.pack(">d", transform.matrixBeforeCrop[1])
-                    pur_bytes += struct.pack(">d", 0.0)
-                    pur_bytes += struct.pack(">d", transform.matrixBeforeCrop[2])
-                    pur_bytes += struct.pack(">d", transform.matrixBeforeCrop[3])
-                    pur_bytes += struct.pack(">d", 0.0)
+                    pack_add(">d", transform.matrixBeforeCrop[0])
+                    pack_add(">d", transform.matrixBeforeCrop[1])
+                    pack_add(">d", 0.0)
+                    pack_add(">d", transform.matrixBeforeCrop[2])
+                    pack_add(">d", transform.matrixBeforeCrop[3])
+                    pack_add(">d", 0.0)
                     # Location before crop
-                    pur_bytes += struct.pack(">d", transform.xCrop)
-                    pur_bytes += struct.pack(">d", transform.yCrop)
+                    pack_add(">d", transform.xCrop)
+                    pack_add(">d", transform.yCrop)
                     # Finally crop scale
-                    pur_bytes += struct.pack(">d", transform.scaleCrop)
+                    pack_add(">d", transform.scaleCrop)
 
                     # Number of crop points
-                    pur_bytes += struct.pack(">I", len(transform.points[0]))
+                    pack_add(">I", len(transform.points[0]))
                     for i in range(len(transform.points[0])):
                         if i == 0:
-                            pur_bytes += struct.pack(">I", 0)
+                            pack_add(">I", 0)
                         else:
-                            pur_bytes += struct.pack(">I", 1)
-                        pur_bytes += struct.pack(">d", transform.points[0][i])
-                        pur_bytes += struct.pack(">d", transform.points[1][i])
+                            pack_add(">I", 1)
+                        pack_add(">d", transform.points[0][i])
+                        pack_add(">d", transform.points[1][i])
 
                     # No idea if this actually holds information, but it always looks the same
-                    pur_bytes += struct.pack(">d", 0.0)
-                    pur_bytes += struct.pack(">I", 1)
-                    pur_bytes += struct.pack(">b", 0)
-                    pur_bytes += struct.pack(">q", -1)
-                    pur_bytes += struct.pack(">I", 0)
+                    pack_add(">d", 0.0)
+                    pack_add(">I", 1)
+                    pack_add(">b", 0)
+                    pack_add(">q", -1)
+                    pack_add(">I", 0)
 
                     # Start of transform needs its own end address
                     pur_bytes[transform_end:transform_end+8] = bytearray(struct.pack(">Q", len(pur_bytes)))
@@ -559,48 +562,48 @@ class PurFile:
                 pur_bytes += bytearray(struct.pack(">Q", 0))
 
                 pur_bytes[transform_end:transform_end+8] = bytearray(struct.pack(">Q", len(pur_bytes)))
-                pur_bytes += struct.pack(">I", 32)
-                pur_bytes += struct.pack(">b", 0)
+                pack_add(">I", 32)
+                pack_add(">b", 0)
                 pur_bytes += "GraphicsTextItem".encode("utf-16-le")
                 pur_bytes[len(pur_bytes)-1:len(pur_bytes)] = []
                 # The text
-                pur_bytes += struct.pack(">I", len(textTransform.text))
+                pack_add(">I", len(textTransform.text))
                 pur_bytes += textTransform.text.encode("utf-8")
 
                 # Matrix
-                pur_bytes += struct.pack(">d", textTransform.matrix[0])
-                pur_bytes += struct.pack(">d", textTransform.matrix[1])
-                pur_bytes += struct.pack(">d", 0.0)
-                pur_bytes += struct.pack(">d", textTransform.matrix[2])
-                pur_bytes += struct.pack(">d", textTransform.matrix[3])
-                pur_bytes += struct.pack(">d", 0.0)
+                pack_add(">d", textTransform.matrix[0])
+                pack_add(">d", textTransform.matrix[1])
+                pack_add(">d", 0.0)
+                pack_add(">d", textTransform.matrix[2])
+                pack_add(">d", textTransform.matrix[3])
+                pack_add(">d", 0.0)
 
                 # Location
-                pur_bytes += struct.pack(">d", textTransform.x)
-                pur_bytes += struct.pack(">d", textTransform.y)
+                pack_add(">d", textTransform.x)
+                pack_add(">d", textTransform.y)
                 # Mysterious 1.0 float
-                pur_bytes += struct.pack(">d", 1.0)
+                pack_add(">d", 1.0)
                 # ID
-                pur_bytes += struct.pack(">I", textTransform.id)
+                pack_add(">I", textTransform.id)
                 # Zlayer
-                pur_bytes += struct.pack(">d", textTransform.zLayer)
+                pack_add(">d", textTransform.zLayer)
                 # Weird meaningless byte
-                pur_bytes += struct.pack(">b", 1)
+                pack_add(">b", 1)
                 # Opacity n RGB
-                pur_bytes += struct.pack(">H", textTransform.opacity)
-                pur_bytes += struct.pack(">H", textTransform.rgb[0])
-                pur_bytes += struct.pack(">H", textTransform.rgb[1])
-                pur_bytes += struct.pack(">H", textTransform.rgb[2])
+                pack_add(">H", textTransform.opacity)
+                pack_add(">H", textTransform.rgb[0])
+                pack_add(">H", textTransform.rgb[1])
+                pack_add(">H", textTransform.rgb[2])
                 # Mysterious thing that counts something about background
-                pur_bytes += struct.pack(">H", 0)
-                pur_bytes += struct.pack(">b", 1)
+                pack_add(">H", 0)
+                pack_add(">b", 1)
                 # Background opacity n RGB
-                pur_bytes += struct.pack(">H", textTransform.opacityBackground)
-                pur_bytes += struct.pack(">H", textTransform.rgbBackground[0])
-                pur_bytes += struct.pack(">H", textTransform.rgbBackground[1])
-                pur_bytes += struct.pack(">H", textTransform.rgbBackground[2])
-                pur_bytes += struct.pack(">I", 0)
-                pur_bytes += struct.pack(">H", 0)
+                pack_add(">H", textTransform.opacityBackground)
+                pack_add(">H", textTransform.rgbBackground[0])
+                pack_add(">H", textTransform.rgbBackground[1])
+                pack_add(">H", textTransform.rgbBackground[2])
+                pack_add(">I", 0)
+                pack_add(">H", 0)
 
                 # Start of transform needs its own end address
                 pur_bytes[transform_end:transform_end+8] = bytearray(struct.pack(">Q", len(pur_bytes)))
@@ -611,15 +614,15 @@ class PurFile:
 
         write_items()  # Write image and text items, in the right order
 
-        # Location
-        pur_bytes += struct.pack(">I", len(self.folderLocation))
-        pur_bytes += self.folderLocation.encode("utf-8")
-        pur_bytes[16:24] = bytearray(struct.pack(">Q", len(pur_bytes)))
+        pack_add(">I", len(os.getcwd().encode("utf-16-be")))  # Length location
+        pur_bytes += os.getcwd().encode("utf-16-be")
+
+        pur_bytes[16:24] = bytearray(struct.pack(">Q", len(pur_bytes)))  # Update header, begin of references
 
         for reference in references:
-            pur_bytes += struct.pack(">I", reference[0])
-            pur_bytes += struct.pack(">Q", reference[1])
-            pur_bytes += struct.pack(">Q", reference[2])
+            pack_add(">I", reference[0])
+            pack_add(">Q", reference[1])
+            pack_add(">Q", reference[2])
 
         with open(file, "wb") as f:
             f.write(pur_bytes)
