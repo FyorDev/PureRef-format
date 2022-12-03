@@ -19,7 +19,6 @@ class PurGraphicsTextItem:
         self.rgbBackground = [0, 0, 0]
 
 
-
 class PurGraphicsImageItem:
     # Part of a PurImage
     # Be aware: PureRef transforms have an alternative second format for
@@ -394,43 +393,56 @@ class PurFile:
             nonlocal pur_bytes
             pur_bytes += struct.pack(typ, *args)
 
+        def pack_add_matrix(matrix: []):
+            pack_add(">d", matrix[0])
+            pack_add(">d", matrix[1])
+            pack_add(">d", 0.0)
+            pack_add(">d", matrix[2])
+            pack_add(">d", matrix[3])
+            pack_add(">d", 0.0)
+
+        def pack_add_rgb(rgb: []):
+            nonlocal pur_bytes
+            for value in rgb:
+                pur_bytes += struct.pack(">H", value)
+
         def write_header():
             # A standard empty header for PureRef 1.11
             nonlocal pur_bytes
             pur_bytes = bytearray(b'\x00') * 224  # 224 empty bytes to fill the header with
-            pur_bytes[0:4] = bytearray(struct.pack(">I", 8))  # Needed to recognize the file as a PureRef file
+            pur_bytes[0:4] = struct.pack(">I", 8)  # Needed to recognize the file as a PureRef file
             pur_bytes[4:12] = "1.10".encode("utf-16-be")  # Version
 
             # Write GraphicsImageItem+GraphicsTextItem count and GraphicsImageItem count
             image_items = self.count_image_items()
-            pur_bytes[12:14] = bytearray(struct.pack(">H", image_items + len(self.text)))
-            pur_bytes[14:16] = bytearray(struct.pack(">H", image_items))
+            pur_bytes[12:14] = struct.pack(">H", image_items + len(self.text))
+            pur_bytes[14:16] = struct.pack(">H", image_items)
 
-            pur_bytes[24:28] = bytearray(struct.pack(">I", 12))  # Unknown, needed for valid header
-            pur_bytes[40:44] = bytearray(struct.pack(">I", 64))  # Unknown, needed for valid header
+            pur_bytes[24:28] = struct.pack(">I", 12)  # Unknown, needed for valid header
+            pur_bytes[40:44] = struct.pack(">I", 64)  # Unknown, needed for valid header
 
             # Write (and assign) GraphicsImageItem ID count, not usually the same, but we discard unused transform IDs
-            pur_bytes[108:112] = bytearray(struct.pack(">I", image_items + len(self.text)))
+            pur_bytes[108:112] = struct.pack(">I", image_items + len(self.text))
             # ImageItems received IDs in CountImageItems(), now give text their own ID
             for i in range(len(self.text)):
                 self.text[i].id = image_items + i
 
             # Write canvas width and height
             pur_bytes[112:144] = (
-                bytearray(struct.pack(">d", self.canvas[0])) +
-                bytearray(struct.pack(">d", self.canvas[1])) +
-                bytearray(struct.pack(">d", self.canvas[2])) +
-                bytearray(struct.pack(">d", self.canvas[3]))
+                struct.pack(">d", self.canvas[0]) +
+                struct.pack(">d", self.canvas[1]) +
+                struct.pack(">d", self.canvas[2]) +
+                struct.pack(">d", self.canvas[3])
             )
             # Write canvas view zoom, you want x and y zoom to be the same
-            pur_bytes[144:152] = bytearray(struct.pack(">d", self.zoom))
-            pur_bytes[176:184] = bytearray(struct.pack(">d", self.zoom))
+            pur_bytes[144:152] = struct.pack(">d", self.zoom)
+            pur_bytes[176:184] = struct.pack(">d", self.zoom)
 
-            # always 1, related to orientation
-            pur_bytes[208:216] = bytearray(struct.pack(">d", 1.0))
+            # Zoom multiplier, should always be 1.0
+            pur_bytes[208:216] = struct.pack(">d", 1.0)
 
             # Write canvas view X and Y
-            pur_bytes[216:224] = bytearray(struct.pack(">i", self.xCanvas)) + bytearray(struct.pack(">i", self.yCanvas))
+            pur_bytes[216:224] = struct.pack(">i", self.xCanvas) + struct.pack(">i", self.yCanvas)
 
         def write_images():
             nonlocal pur_bytes
@@ -499,12 +511,7 @@ class PurFile:
                     # Mysterious 1.0 double
                     pack_add(">d", 1.0)
                     # Scaling matrix
-                    pack_add(">d", transform.matrix[0])
-                    pack_add(">d", transform.matrix[1])
-                    pack_add(">d", 0.0)
-                    pack_add(">d", transform.matrix[2])
-                    pack_add(">d", transform.matrix[3])
-                    pack_add(">d", 0.0)
+                    pack_add_matrix(transform.matrix)
                     # Location
                     pack_add(">d", transform.x)
                     pack_add(">d", transform.y)
@@ -514,12 +521,7 @@ class PurFile:
                     pack_add(">I", transform.id)
                     pack_add(">d", transform.zLayer)
                     # MatrixBeforeCrop
-                    pack_add(">d", transform.matrixBeforeCrop[0])
-                    pack_add(">d", transform.matrixBeforeCrop[1])
-                    pack_add(">d", 0.0)
-                    pack_add(">d", transform.matrixBeforeCrop[2])
-                    pack_add(">d", transform.matrixBeforeCrop[3])
-                    pack_add(">d", 0.0)
+                    pack_add_matrix(transform.matrixBeforeCrop)
                     # Location before crop
                     pack_add(">d", transform.xCrop)
                     pack_add(">d", transform.yCrop)
@@ -544,7 +546,7 @@ class PurFile:
                     pack_add(">I", 0)
 
                     # Start of transform needs its own end address
-                    pur_bytes[transform_end:transform_end+8] = bytearray(struct.pack(">Q", len(pur_bytes)))
+                    pur_bytes[transform_end:transform_end+8] = struct.pack(">Q", len(pur_bytes))
 
             #
             #   DONE image transforms loaded
@@ -553,9 +555,9 @@ class PurFile:
             # Time for text
             for textTransform in self.text:
                 transform_end = len(pur_bytes)
-                pur_bytes += bytearray(struct.pack(">Q", 0))
+                pur_bytes += struct.pack(">Q", 0)
 
-                pur_bytes[transform_end:transform_end+8] = bytearray(struct.pack(">Q", len(pur_bytes)))
+                pur_bytes[transform_end:transform_end+8] = struct.pack(">Q", len(pur_bytes))
                 pack_add(">I", 32)
                 pur_bytes += "GraphicsTextItem".encode("utf-16-be")
                 # The text
@@ -563,12 +565,7 @@ class PurFile:
                 pur_bytes += textTransform.text.encode("utf-16-be")
 
                 # Matrix
-                pack_add(">d", textTransform.matrix[0])
-                pack_add(">d", textTransform.matrix[1])
-                pack_add(">d", 0.0)
-                pack_add(">d", textTransform.matrix[2])
-                pack_add(">d", textTransform.matrix[3])
-                pack_add(">d", 0.0)
+                pack_add_matrix(textTransform.matrix)
 
                 # Location
                 pack_add(">d", textTransform.x)
@@ -583,22 +580,18 @@ class PurFile:
                 pack_add(">b", 1)
                 # Opacity n RGB
                 pack_add(">H", textTransform.opacity)
-                pack_add(">H", textTransform.rgb[0])
-                pack_add(">H", textTransform.rgb[1])
-                pack_add(">H", textTransform.rgb[2])
+                pack_add_rgb(textTransform.rgb)
                 # Mysterious thing that counts something about background
                 pack_add(">H", 0)
                 pack_add(">b", 1)
                 # Background opacity n RGB
                 pack_add(">H", textTransform.opacityBackground)
-                pack_add(">H", textTransform.rgbBackground[0])
-                pack_add(">H", textTransform.rgbBackground[1])
-                pack_add(">H", textTransform.rgbBackground[2])
+                pack_add_rgb(textTransform.rgbBackground)
                 pack_add(">I", 0)
                 pack_add(">H", 0)
 
                 # Start of transform needs its own end address
-                pur_bytes[transform_end:transform_end+8] = bytearray(struct.pack(">Q", len(pur_bytes)))
+                pur_bytes[transform_end:transform_end+8] = struct.pack(">Q", len(pur_bytes))
 
         write_header()  # Write header
 
@@ -609,7 +602,7 @@ class PurFile:
         pack_add(">I", len(os.getcwd().encode("utf-16-be")))  # Length location
         pur_bytes += os.getcwd().encode("utf-16-be")
 
-        pur_bytes[16:24] = bytearray(struct.pack(">Q", len(pur_bytes)))  # Update header, begin of references
+        pur_bytes[16:24] = struct.pack(">Q", len(pur_bytes))  # Update header, begin of references
 
         for reference in references:
             pack_add(">I", reference[0])
