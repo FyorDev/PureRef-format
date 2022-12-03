@@ -23,7 +23,8 @@ class PurGraphicsTextItem:
 # I don't know what exactly they're using, but at least this will work for ASCII characters
 def encodestr(s: str):
     length = len(s)*2
-    return (s.encode("utf-16-le")[length-1:length] + s.encode("utf-16-le")[0:length-1]).decode("utf-8")
+    return (s.encode("utf-16-le")[length-1:length] +
+            s.encode("utf-16-le")[0:length-1]).decode("utf-8")
 
 
 class PurGraphicsImageItem:
@@ -381,17 +382,19 @@ class PurFile:
         # Read the PureRef file
         ################################################################################################################
 
-        read_header()
+        read_header()  # Read header info, set total_image_items and self.canvas
 
-        read_images()
+        read_images()  # Read all PNG image data, and duplicates (which are the transform.id from another image)
 
-        read_items()
+        read_items()  # Read all the items, and add them to the image_items list
 
+        # After the final item, the header file_length is reached. This marks the beginning of the location and refs
         self.folderLocation = pur_bytes[4:4+unpack(">I", 0, 4)].decode("utf-8")
         erase(4+unpack(">I", 0, 4))
 
-        # Put transforms in images (including empty reference images)
-        for i in range(total_image_items):
+        # Read the refs, these couple images to their transform item
+        # Put transforms in their image (including empty duplicate images as if they were real images, for now)
+        for _ in range(total_image_items):
             red_id = unpack(">I", 0, 4)
             ref_address = [unpack(">Q", 4, 12), unpack(">Q", 12, 20)]
             for item in image_items:
@@ -402,7 +405,8 @@ class PurFile:
 
             erase(20)
 
-        # Put all duplicate images together
+        # Remove all duplicate images, and add their transform to the original image.
+        # Duplicate images only have 4 bytes of pngBinary, which is actually the transform.id of the original image
         for image in self.images:
             if len(image.pngBinary) == 4:
                 for other_image in self.images:
@@ -412,214 +416,216 @@ class PurFile:
 
     # Export this object to a .pur file
     def write(self, file: str):
-        # A standard empty header for PureRef 1.11
-        pur_bytes = bytearray(b'\x00\x00\x00\x08\x00\x31\x00\x2E\x00\x31\x00\x30\x00\x00\x00\x00'
-                              b'\x00\x00\x00\x00\x00\x00\x01\x2E\x00\x00\x00\x0C\x00\x31\x00\x2E'
-                              b'\x00\x31\x00\x31\x00\x2E\x00\x31\x00\x00\x00\x40\x00\x35\x00\x62'
-                              b'\x00\x65\x00\x62\x00\x63\x00\x32\x00\x63\x00\x66\x00\x66\x00\x33'
-                              b'\x00\x31\x00\x35\x00\x31\x00\x62\x00\x31\x00\x63\x00\x30\x00\x37'
-                              b'\x00\x30\x00\x34\x00\x39\x00\x64\x00\x33\x00\x65\x00\x65\x00\x61'
-                              b'\x00\x65\x00\x30\x00\x36\x00\x35\x00\x35\x00\x66\x00\x00\x00\x00'
-                              b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-                              b'\x3F\xF0\x00\x00\x00\x00\x00\x00\x3F\xF0\x00\x00\x00\x00\x00\x00'
-                              b'\x3F\xF0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-                              b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-                              b'\x3F\xF0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-                              b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-                              b'\x3F\xF0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')
-
-        # Write GraphicsImageItem+GraphicsTextItem count and GraphicsImageItem count
-        image_items = self.count_image_items()
-        pur_bytes[12:14] = bytearray(struct.pack(">H", image_items + len(self.text)))
-        pur_bytes[14:16] = bytearray(struct.pack(">H", image_items))
-
-        # Write (and assign) GraphicsImageItem ID count, not usually the same, but we discard unused transform IDs
-        pur_bytes[108:112] = bytearray(struct.pack(">I", image_items + len(self.text)))
-        # ImageItems received IDs in CountImageItems(), now give text their own ID
-        for i in range(len(self.text)):
-            self.text[i].id = image_items + i
-
-        # Write canvas width and height
-        pur_bytes[112:144] = (
-            bytearray(struct.pack(">d", self.canvas[0])) +
-            bytearray(struct.pack(">d", self.canvas[1])) +
-            bytearray(struct.pack(">d", self.canvas[2])) +
-            bytearray(struct.pack(">d", self.canvas[3]))
-        )
-        # Write canvas view zoom, you want x and y zoom to be the same
-        pur_bytes[144:152] = bytearray(struct.pack(">d", self.zoom))
-        pur_bytes[176:184] = bytearray(struct.pack(">d", self.zoom))
-        # Write canvas view X and Y
-        pur_bytes[216:224] = bytearray(struct.pack(">i", self.xCanvas)) + bytearray(struct.pack(">i", self.yCanvas))
-
-        # Add all images
-        for image in self.images:
-            image.address[0] = len(pur_bytes)
-            pur_bytes += image.pngBinary
-            image.address[1] = len(pur_bytes)
-
+        pur_bytes = bytearray()
         references = []
-        #
-        # Create references including duplicates
-        # 
-        for image in self.images:
-            i = 0
-            parent = object
-            for transform in image.transforms:
-                if i == 0:
-                    parent = transform
-                    references.append([transform.id, image.address[0], image.address[1]])
-                else:
-                    references.append([transform.id, len(pur_bytes), len(pur_bytes)+4])
-                    pur_bytes += bytearray(struct.pack(">i", parent.id))
 
-                i += 1
+        def write_header():
+            # A standard empty header for PureRef 1.11
+            nonlocal pur_bytes
+            pur_bytes = bytearray(b'\x00') * 224  # 224 empty bytes to fill the header with
+            pur_bytes[0:4] = bytearray(struct.pack(">I", 8))  # Needed to recognize the file as a PureRef file
+            pur_bytes[4:12] = encodestr("1.10").encode("utf-8")  # Version
 
-        if len(self.images) > 0:
-            # Sort all imagetransforms and references by the order in which they appear in memory
-            transforms_ordered = []
-            for image in self.images:
-                for transform in image.transforms:
-                    transforms_ordered.append(transform)
-            # Sort images transforms by addresses too
-            references_zip = zip(references, transforms_ordered)
-            references_zip = sorted(references_zip, key=lambda x: x[0][1])
-            references, transforms_ordered = map(list, zip(*references_zip))
+            # Write GraphicsImageItem+GraphicsTextItem count and GraphicsImageItem count
+            image_items = self.count_image_items()
+            pur_bytes[12:14] = bytearray(struct.pack(">H", image_items + len(self.text)))
+            pur_bytes[14:16] = bytearray(struct.pack(">H", image_items))
 
-        #
-        # Add transforms
-        #
+            # Write (and assign) GraphicsImageItem ID count, not usually the same, but we discard unused transform IDs
+            pur_bytes[108:112] = bytearray(struct.pack(">I", image_items + len(self.text)))
+            # ImageItems received IDs in CountImageItems(), now give text their own ID
+            for i in range(len(self.text)):
+                self.text[i].id = image_items + i
 
-            for transform in transforms_ordered:
-                # transform_end prints current writePin for now to replace later
+            # Write canvas width and height
+            pur_bytes[112:144] = (
+                bytearray(struct.pack(">d", self.canvas[0])) +
+                bytearray(struct.pack(">d", self.canvas[1])) +
+                bytearray(struct.pack(">d", self.canvas[2])) +
+                bytearray(struct.pack(">d", self.canvas[3]))
+            )
+            # Write canvas view zoom, you want x and y zoom to be the same
+            pur_bytes[144:152] = bytearray(struct.pack(">d", self.zoom))
+            pur_bytes[176:184] = bytearray(struct.pack(">d", self.zoom))
+            # Write canvas view X and Y
+            pur_bytes[216:224] = bytearray(struct.pack(">i", self.xCanvas)) + bytearray(struct.pack(">i", self.yCanvas))
+
+        def write_images():
+            nonlocal pur_bytes
+            nonlocal references
+
+            for image_add in self.images:
+                image_add.address[0] = len(pur_bytes)
+                pur_bytes += image_add.pngBinary
+                image_add.address[1] = len(pur_bytes)
+
+            # Create references including duplicates
+            for image_add in self.images:
+                transform_num = 0
+                parent = object
+                for transform_add in image_add.transforms:
+                    if transform_num == 0:
+                        parent = transform_add
+                        references.append([transform_add.id, image_add.address[0], image_add.address[1]])
+                    else:
+                        references.append([transform_add.id, len(pur_bytes), len(pur_bytes) + 4])
+                        pur_bytes += bytearray(struct.pack(">i", parent.id))
+
+                    transform_num += 1
+
+        def write_items():
+            nonlocal pur_bytes
+            nonlocal references
+
+            if len(self.images) > 0:
+                # Sort all imagetransforms and references by the order in which they appear in memory
+                transforms_ordered = []
+                for image in self.images:
+                    for transform in image.transforms:
+                        transforms_ordered.append(transform)
+                # Sort images transforms by addresses too
+                references_zip = zip(references, transforms_ordered)
+                references_zip = sorted(references_zip, key=lambda x: x[0][1])
+                references, transforms_ordered = map(list, zip(*references_zip))
+
+            # Add transforms
+
+                for transform in transforms_ordered:
+                    # transform_end prints current writePin for now to replace later
+                    transform_end = len(pur_bytes)
+                    pur_bytes += bytearray(struct.pack(">Q", 0))
+                    # Purimageitem text
+                    brute_force_loaded = transform.source.encode == encodestr("brute_force_loaded")
+                    pur_bytes += struct.pack(">I", 34)
+                    pur_bytes += struct.pack(">b", 0)
+                    pur_bytes += "GraphicsImageItem".encode("utf-16-le")
+                    # Is bruteforceloaded there is an extra empty 8 byte
+                    if brute_force_loaded:
+                        pur_bytes += struct.pack(">I", 0)
+                    # Source
+                    pur_bytes[len(pur_bytes)-1:len(pur_bytes)] = struct.pack(">I", len(transform.source.encode("utf-8")))
+                    pur_bytes += transform.source.encode("utf-8")
+                    # Name (skipped if bruteforceloaded)
+                    # PureRef can have empty names, but we have brute_force_loaded as default
+                    if not brute_force_loaded:
+                        pur_bytes += struct.pack(">I", len(transform.name.encode("utf-8")))
+                        pur_bytes += transform.name.encode("utf-8")
+
+                    #
+                    # Start actual transform
+                    #
+
+                    # Mysterious 1.0 double
+                    pur_bytes += struct.pack(">d", 1.0)
+                    # Scaling matrix
+                    pur_bytes += struct.pack(">d", transform.matrix[0])
+                    pur_bytes += struct.pack(">d", transform.matrix[1])
+                    pur_bytes += struct.pack(">d", 0.0)
+                    pur_bytes += struct.pack(">d", transform.matrix[2])
+                    pur_bytes += struct.pack(">d", transform.matrix[3])
+                    pur_bytes += struct.pack(">d", 0.0)
+                    # Location
+                    pur_bytes += struct.pack(">d", transform.x)
+                    pur_bytes += struct.pack(">d", transform.y)
+                    # Mysterious 1.0 double
+                    pur_bytes += struct.pack(">d", 1.0)
+                    # ID and ZLayer
+                    pur_bytes += struct.pack(">I", transform.id)
+                    pur_bytes += struct.pack(">d", transform.zLayer)
+                    # MatrixBeforeCrop
+                    pur_bytes += struct.pack(">d", transform.matrixBeforeCrop[0])
+                    pur_bytes += struct.pack(">d", transform.matrixBeforeCrop[1])
+                    pur_bytes += struct.pack(">d", 0.0)
+                    pur_bytes += struct.pack(">d", transform.matrixBeforeCrop[2])
+                    pur_bytes += struct.pack(">d", transform.matrixBeforeCrop[3])
+                    pur_bytes += struct.pack(">d", 0.0)
+                    # Location before crop
+                    pur_bytes += struct.pack(">d", transform.xCrop)
+                    pur_bytes += struct.pack(">d", transform.yCrop)
+                    # Finally crop scale
+                    pur_bytes += struct.pack(">d", transform.scaleCrop)
+
+                    # Number of crop points
+                    pur_bytes += struct.pack(">I", len(transform.points[0]))
+                    for i in range(len(transform.points[0])):
+                        if i == 0:
+                            pur_bytes += struct.pack(">I", 0)
+                        else:
+                            pur_bytes += struct.pack(">I", 1)
+                        pur_bytes += struct.pack(">d", transform.points[0][i])
+                        pur_bytes += struct.pack(">d", transform.points[1][i])
+
+                    # No idea if this actually holds information, but it always looks the same
+                    pur_bytes += struct.pack(">d", 0.0)
+                    pur_bytes += struct.pack(">I", 1)
+                    pur_bytes += struct.pack(">b", 0)
+                    pur_bytes += struct.pack(">q", -1)
+                    pur_bytes += struct.pack(">I", 0)
+
+                    # Start of transform needs its own end address
+                    pur_bytes[transform_end:transform_end+8] = bytearray(struct.pack(">Q", len(pur_bytes)))
+
+            #
+            #   DONE image transforms loaded
+            #
+
+            # Time for text
+            for textTransform in self.text:
                 transform_end = len(pur_bytes)
                 pur_bytes += bytearray(struct.pack(">Q", 0))
-                # Purimageitem text
-                brute_force_loaded = transform.source.encode == encodestr("brute_force_loaded")
-                pur_bytes += struct.pack(">I", 34)
+
+                pur_bytes[transform_end:transform_end+8] = bytearray(struct.pack(">Q", len(pur_bytes)))
+                pur_bytes += struct.pack(">I", 32)
                 pur_bytes += struct.pack(">b", 0)
-                pur_bytes += "GraphicsImageItem".encode("utf-16-le")
-                # Is bruteforceloaded there is an extra empty 8 byte
-                if brute_force_loaded:
-                    pur_bytes += struct.pack(">I", 0)
-                # Source
-                pur_bytes[len(pur_bytes)-1:len(pur_bytes)] = struct.pack(">I", len(transform.source.encode("utf-8")))
-                pur_bytes += transform.source.encode("utf-8")
-                # Name (skipped if bruteforceloaded)
-                # PureRef can have empty names, but we have brute_force_loaded as default
-                if not brute_force_loaded:
-                    pur_bytes += struct.pack(">I", len(transform.name.encode("utf-8")))
-                    pur_bytes += transform.name.encode("utf-8")
+                pur_bytes += "GraphicsTextItem".encode("utf-16-le")
+                pur_bytes[len(pur_bytes)-1:len(pur_bytes)] = []
+                # The text
+                pur_bytes += struct.pack(">I", len(textTransform.text))
+                pur_bytes += textTransform.text.encode("utf-8")
 
-                #
-                # Start actual transform
-                #
+                # Matrix
+                pur_bytes += struct.pack(">d", textTransform.matrix[0])
+                pur_bytes += struct.pack(">d", textTransform.matrix[1])
+                pur_bytes += struct.pack(">d", 0.0)
+                pur_bytes += struct.pack(">d", textTransform.matrix[2])
+                pur_bytes += struct.pack(">d", textTransform.matrix[3])
+                pur_bytes += struct.pack(">d", 0.0)
 
-                # Mysterious 1.0 double
-                pur_bytes += struct.pack(">d", 1.0)
-                # Scaling matrix
-                pur_bytes += struct.pack(">d", transform.matrix[0])
-                pur_bytes += struct.pack(">d", transform.matrix[1])
-                pur_bytes += struct.pack(">d", 0.0)
-                pur_bytes += struct.pack(">d", transform.matrix[2])
-                pur_bytes += struct.pack(">d", transform.matrix[3])
-                pur_bytes += struct.pack(">d", 0.0)
                 # Location
-                pur_bytes += struct.pack(">d", transform.x)
-                pur_bytes += struct.pack(">d", transform.y)
-                # Mysterious 1.0 double
+                pur_bytes += struct.pack(">d", textTransform.x)
+                pur_bytes += struct.pack(">d", textTransform.y)
+                # Mysterious 1.0 float
                 pur_bytes += struct.pack(">d", 1.0)
-                # ID and ZLayer
-                pur_bytes += struct.pack(">I", transform.id)
-                pur_bytes += struct.pack(">d", transform.zLayer)
-                # MatrixBeforeCrop
-                pur_bytes += struct.pack(">d", transform.matrixBeforeCrop[0])
-                pur_bytes += struct.pack(">d", transform.matrixBeforeCrop[1])
-                pur_bytes += struct.pack(">d", 0.0)
-                pur_bytes += struct.pack(">d", transform.matrixBeforeCrop[2])
-                pur_bytes += struct.pack(">d", transform.matrixBeforeCrop[3])
-                pur_bytes += struct.pack(">d", 0.0)
-                # Location before crop
-                pur_bytes += struct.pack(">d", transform.xCrop)
-                pur_bytes += struct.pack(">d", transform.yCrop)
-                # Finally crop scale
-                pur_bytes += struct.pack(">d", transform.scaleCrop)
-
-                # Number of crop points
-                pur_bytes += struct.pack(">I", len(transform.points[0]))
-                for i in range(len(transform.points[0])):
-                    if i == 0:
-                        pur_bytes += struct.pack(">I", 0)
-                    else:
-                        pur_bytes += struct.pack(">I", 1)
-                    pur_bytes += struct.pack(">d", transform.points[0][i])
-                    pur_bytes += struct.pack(">d", transform.points[1][i])
-
-                # No idea if this actually holds information, but it always looks the same
-                pur_bytes += struct.pack(">d", 0.0)
-                pur_bytes += struct.pack(">I", 1)
-                pur_bytes += struct.pack(">b", 0)
-                pur_bytes += struct.pack(">q", -1)
+                # ID
+                pur_bytes += struct.pack(">I", textTransform.id)
+                # Zlayer
+                pur_bytes += struct.pack(">d", textTransform.zLayer)
+                # Weird meaningless byte
+                pur_bytes += struct.pack(">b", 1)
+                # Opacity n RGB
+                pur_bytes += struct.pack(">H", textTransform.opacity)
+                pur_bytes += struct.pack(">H", textTransform.rgb[0])
+                pur_bytes += struct.pack(">H", textTransform.rgb[1])
+                pur_bytes += struct.pack(">H", textTransform.rgb[2])
+                # Mysterious thing that counts something about background
+                pur_bytes += struct.pack(">H", 0)
+                pur_bytes += struct.pack(">b", 1)
+                # Background opacity n RGB
+                pur_bytes += struct.pack(">H", textTransform.opacityBackground)
+                pur_bytes += struct.pack(">H", textTransform.rgbBackground[0])
+                pur_bytes += struct.pack(">H", textTransform.rgbBackground[1])
+                pur_bytes += struct.pack(">H", textTransform.rgbBackground[2])
                 pur_bytes += struct.pack(">I", 0)
+                pur_bytes += struct.pack(">H", 0)
 
                 # Start of transform needs its own end address
                 pur_bytes[transform_end:transform_end+8] = bytearray(struct.pack(">Q", len(pur_bytes)))
 
-        #
-        #   DONE image transforms loaded
-        #
+        write_header()  # Write header
 
-        # Time for text
-        for textTransform in self.text:
-            transform_end = len(pur_bytes)
-            pur_bytes += bytearray(struct.pack(">Q", 0))
+        write_images()  # Write images, saving addresses and references, and write duplicate images
 
-            pur_bytes[transform_end:transform_end+8] = bytearray(struct.pack(">Q", len(pur_bytes)))
-            pur_bytes += struct.pack(">I", 32)
-            pur_bytes += struct.pack(">b", 0)
-            pur_bytes += "GraphicsTextItem".encode("utf-16-le")
-            pur_bytes[len(pur_bytes)-1:len(pur_bytes)] = []
-            # The text
-            pur_bytes += struct.pack(">I", len(textTransform.text))
-            pur_bytes += textTransform.text.encode("utf-8")
-
-            # Matrix
-            pur_bytes += struct.pack(">d", textTransform.matrix[0])
-            pur_bytes += struct.pack(">d", textTransform.matrix[1])
-            pur_bytes += struct.pack(">d", 0.0)
-            pur_bytes += struct.pack(">d", textTransform.matrix[2])
-            pur_bytes += struct.pack(">d", textTransform.matrix[3])
-            pur_bytes += struct.pack(">d", 0.0)
-
-            # Location
-            pur_bytes += struct.pack(">d", textTransform.x)
-            pur_bytes += struct.pack(">d", textTransform.y)
-            # Mysterious 1.0 float
-            pur_bytes += struct.pack(">d", 1.0)
-            # ID
-            pur_bytes += struct.pack(">I", textTransform.id)
-            # Zlayer
-            pur_bytes += struct.pack(">d", textTransform.zLayer)
-            # Weird meaningless byte
-            pur_bytes += struct.pack(">b", 1)
-            # Opacity n RGB
-            pur_bytes += struct.pack(">H", textTransform.opacity)
-            pur_bytes += struct.pack(">H", textTransform.rgb[0])
-            pur_bytes += struct.pack(">H", textTransform.rgb[1])
-            pur_bytes += struct.pack(">H", textTransform.rgb[2])
-            # Mysterious thing that counts something about background
-            pur_bytes += struct.pack(">H", 0)
-            pur_bytes += struct.pack(">b", 1)
-            # Background opacity n RGB
-            pur_bytes += struct.pack(">H", textTransform.opacityBackground)
-            pur_bytes += struct.pack(">H", textTransform.rgbBackground[0])
-            pur_bytes += struct.pack(">H", textTransform.rgbBackground[1])
-            pur_bytes += struct.pack(">H", textTransform.rgbBackground[2])
-            pur_bytes += struct.pack(">I", 0)
-            pur_bytes += struct.pack(">H", 0)
-
-            # Start of transform needs its own end address
-            pur_bytes[transform_end:transform_end+8] = bytearray(struct.pack(">Q", len(pur_bytes)))
+        write_items()  # Write image and text items, in the right order
 
         # Location
         pur_bytes += struct.pack(">I", len(self.folderLocation))
