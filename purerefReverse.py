@@ -19,12 +19,6 @@ class PurGraphicsTextItem:
         self.rgbBackground = [0, 0, 0]
 
 
-# TODO: BAD FUNCTION REPLACE WITH utf-16-be
-def encodestr(s: str):
-    length = len(s)*2
-    return (s.encode("utf-16-le")[length-1:length] +
-            s.encode("utf-16-le")[0:length-1]).decode("utf-8")
-
 
 class PurGraphicsImageItem:
     # Part of a PurImage
@@ -32,8 +26,8 @@ class PurGraphicsImageItem:
     # rotated cropping where the image is no longer a rectangle
 
     def __init__(self):
-        self.source = encodestr("BruteForceLoaded")
-        self.name = encodestr("image")
+        self.source = "BruteForceLoaded"
+        self.name = "image"
         self.matrix = [1.0, 0.0,
                        0.0, 1.0]
 
@@ -56,12 +50,6 @@ class PurGraphicsImageItem:
         h = height/2
         self.points = [[-w, w, w, -w, -w],
                        [-h, -h, h, h, -h]]
-
-    def set_source(self, source):
-        self.source = encodestr(source)
-
-    def set_name(self, name):
-        self.name = encodestr(name)
 
 
 class PurImage:
@@ -96,7 +84,7 @@ class PurFile:
         # View location
         self.xCanvas, self.yCanvas = 0, 0
 
-        self.folderLocation = encodestr(os.getcwd())
+        self.folderLocation = os.getcwd()
 
         # image list
         self.images = []
@@ -226,7 +214,7 @@ class PurFile:
                     if unpack(">i", 0, 4) == -1:
                         erase(4)
                     else:
-                        transform.source = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-8", errors="replace")
+                        transform.source = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-16-be", errors="replace")
                         erase(4 + unpack(">I", 0, 4))
 
                     # Read&Remove name
@@ -234,7 +222,7 @@ class PurFile:
                         if unpack(">i", 0, 4) == -1:
                             erase(4)
                         else:
-                            transform.name = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-8", errors="replace")
+                            transform.name = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-16-be", errors="replace")
                             erase(4 + unpack(">I", 0, 4))
 
                     # Unknown permanent 1.0 float we don't want
@@ -298,7 +286,7 @@ class PurFile:
                     # Remove textItem standard text
                     erase(12 + unpack(">I", 8, 12))
                     # Read the text
-                    text_transform.text = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-8", errors="replace")
+                    text_transform.text = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-16-be", errors="replace")
                     erase(4 + unpack(">I", 0, 4))
                     # Time for matrix for scaling & rotation
                     text_transform.matrix = unpack_matrix()
@@ -372,7 +360,7 @@ class PurFile:
         read_items()  # Read all the items, and add them to the image_items list
 
         # After the final item, the header file_length is reached. This marks the beginning of the location and refs
-        self.folderLocation = pur_bytes[4:4+unpack(">I", 0, 4)].decode("utf-8")
+        self.folderLocation = pur_bytes[4:4+unpack(">I", 0, 4)].decode("utf-16-be")
         erase(4+unpack(">I", 0, 4))
 
         # Read the refs, these couple images to their transform item
@@ -411,12 +399,15 @@ class PurFile:
             nonlocal pur_bytes
             pur_bytes = bytearray(b'\x00') * 224  # 224 empty bytes to fill the header with
             pur_bytes[0:4] = bytearray(struct.pack(">I", 8))  # Needed to recognize the file as a PureRef file
-            pur_bytes[4:12] = encodestr("1.10").encode("utf-8")  # Version
+            pur_bytes[4:12] = "1.10".encode("utf-16-be")  # Version
 
             # Write GraphicsImageItem+GraphicsTextItem count and GraphicsImageItem count
             image_items = self.count_image_items()
             pur_bytes[12:14] = bytearray(struct.pack(">H", image_items + len(self.text)))
             pur_bytes[14:16] = bytearray(struct.pack(">H", image_items))
+
+            pur_bytes[24:28] = bytearray(struct.pack(">I", 12))  # Unknown, needed for valid header
+            pur_bytes[40:44] = bytearray(struct.pack(">I", 64))  # Unknown, needed for valid header
 
             # Write (and assign) GraphicsImageItem ID count, not usually the same, but we discard unused transform IDs
             pur_bytes[108:112] = bytearray(struct.pack(">I", image_items + len(self.text)))
@@ -434,6 +425,10 @@ class PurFile:
             # Write canvas view zoom, you want x and y zoom to be the same
             pur_bytes[144:152] = bytearray(struct.pack(">d", self.zoom))
             pur_bytes[176:184] = bytearray(struct.pack(">d", self.zoom))
+
+            # always 1, related to orientation
+            pur_bytes[208:216] = bytearray(struct.pack(">d", 1.0))
+
             # Write canvas view X and Y
             pur_bytes[216:224] = bytearray(struct.pack(">i", self.xCanvas)) + bytearray(struct.pack(">i", self.yCanvas))
 
@@ -482,21 +477,20 @@ class PurFile:
                     transform_end = len(pur_bytes)
                     pack_add(">Q", 0)
                     # Purimageitem text
-                    brute_force_loaded = transform.source.encode == encodestr("brute_force_loaded")
+                    brute_force_loaded = transform.source == "brute_force_loaded"
                     pack_add(">I", 34)
-                    pack_add(">b", 0)
-                    pur_bytes += "GraphicsImageItem".encode("utf-16-le")
+                    pur_bytes += "GraphicsImageItem".encode("utf-16-be")
                     # Is bruteforceloaded there is an extra empty 8 byte
                     if brute_force_loaded:
                         pack_add(">I", 0)
                     # Source
-                    pur_bytes[len(pur_bytes)-1:len(pur_bytes)] = struct.pack(">I", len(transform.source.encode("utf-8")))
-                    pur_bytes += transform.source.encode("utf-8")
+                    pur_bytes += struct.pack(">I", len(transform.source.encode("utf-16-be")))
+                    pur_bytes += transform.source.encode("utf-16-be")
                     # Name (skipped if bruteforceloaded)
                     # PureRef can have empty names, but we have brute_force_loaded as default
                     if not brute_force_loaded:
-                        pack_add(">I", len(transform.name.encode("utf-8")))
-                        pur_bytes += transform.name.encode("utf-8")
+                        pack_add(">I", len(transform.name.encode("utf-16-be")))
+                        pur_bytes += transform.name.encode("utf-16-be")
 
                     #
                     # Start actual transform
@@ -563,12 +557,10 @@ class PurFile:
 
                 pur_bytes[transform_end:transform_end+8] = bytearray(struct.pack(">Q", len(pur_bytes)))
                 pack_add(">I", 32)
-                pack_add(">b", 0)
-                pur_bytes += "GraphicsTextItem".encode("utf-16-le")
-                pur_bytes[len(pur_bytes)-1:len(pur_bytes)] = []
+                pur_bytes += "GraphicsTextItem".encode("utf-16-be")
                 # The text
-                pack_add(">I", len(textTransform.text))
-                pur_bytes += textTransform.text.encode("utf-8")
+                pack_add(">I", len(textTransform.text.encode("utf-16-be")))
+                pur_bytes += textTransform.text.encode("utf-16-be")
 
                 # Matrix
                 pack_add(">d", textTransform.matrix[0])
