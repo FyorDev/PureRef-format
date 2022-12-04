@@ -8,15 +8,18 @@ class PurGraphicsTextItem:
     # Part of a PureRefObj
 
     def __init__(self):
-        self.text = ""  # ASCII text contents
-        self.matrix = [1.0, 0.0, 0.0, 1.0]
+        self.text = ""
+        self.matrix = \
+            [1.0, 0.0,
+             0.0, 1.0]
         self.x, self.y = 0.0, 0.0
         self.zLayer = 1.0
         self.id = 0
         self.opacity = 65535
-        self.rgb = [65535,
-                    65535,
-                    65535]
+        self.rgb = \
+            [65535,
+             65535,
+             65535]
         self.opacityBackground = 5000
         self.rgbBackground = [0, 0, 0]
 
@@ -29,40 +32,38 @@ class PurGraphicsImageItem:
     def __init__(self):
         self.source = "BruteForceLoaded"
         self.name = "image"
-        self.matrix = [1.0, 0.0,
-                       0.0, 1.0]
-
+        self.matrix = \
+            [1.0, 0.0,
+             0.0, 1.0]
         self.x, self.y = 0.0, 0.0
         self.id = 0
         self.zLayer = 1.0
-
-        self.matrixBeforeCrop = [1.0, 0.0,
-                                 0.0, 1.0]
-
+        self.matrixBeforeCrop = \
+            [1.0, 0.0,
+             0.0, 1.0]
         self.xCrop, self.yCrop = 0.0, 0.0
         self.scaleCrop = 1.0
         self.pointCount = 5  # 4 byte
-        self.points = [[-1000, 1000, 1000, -1000, -1000],
-                       [-1000, -1000, 1000, 1000, -1000]]  # 4 byte 01 and 2 doubles
+        self.points = \
+            [[-1000, 1000, 1000, -1000, -1000],
+             [-1000, -1000, 1000, 1000, -1000]]  # 4 byte 01 and 2 doubles
 
     def reset_crop(self, width, height):
         self.xCrop, self.yCrop = -float(width/2), -float(height/2)
         w = width/2
         h = height/2
-        self.points = [[-w, w, w, -w, -w],
-                       [-h, -h, h, h, -h]]
+        self.points = \
+            [[-w, w, w, -w, -w],
+             [-h, -h, h, h, -h]]
 
 
 class PurImage:
     # Part of a PureRefObj
     # Holds an image and its transform(s) (usually only one)
     def __init__(self):
-        # original location for identification
-        self.address = [0, 0]
-        # image data
-        self.pngBinary = bytearray()
-        # transforms[] for multiple instances
-        self.transforms = []
+        self.address = [0, 0]  # original location for identification
+        self.pngBinary = bytearray()  # image data
+        self.transforms = []  # transforms[] for multiple instances
 
 
 ########################################################################################################################
@@ -78,19 +79,12 @@ class PurFile:
     # text and anything else that would be in a .pur file
     # Can be exported to a .pur file, can be imported from a .pur file and can be generated from images to later export
     def __init__(self):
-        # Canvas width and height
-        self.canvas = [-10000.0, -10000.0, 10000.0, 10000.0]
-        # View zoom level
-        self.zoom = 1.0
-        # View location
-        self.xCanvas, self.yCanvas = 0, 0
-
+        self.canvas = [-10000.0, -10000.0, 10000.0, 10000.0]  # Canvas width and height
+        self.zoom = 1.0  # View zoom level
+        self.xCanvas, self.yCanvas = 0, 0  # View location
         self.folderLocation = os.getcwd()
-
-        # image list
-        self.images = []
-        # text list
-        self.text = []
+        self.images = []  # image list
+        self.text = []  # text list
 
     def count_image_items(self):
         # Count the amount of image transforms and assign their IDs
@@ -116,7 +110,7 @@ class PurFile:
         def unpack(typ: str, begin: int, stop: int):  # Bytes to type
             return struct.unpack(typ, pur_bytes[begin:stop])[0]
 
-        def unpack_delete(typ: str):  # Unpack typ and remove from pur_bytes
+        def unpack_erase(typ: str):  # Unpack typ and remove from pur_bytes
             val = unpack(typ, 0, struct.calcsize(typ))
             erase(struct.calcsize(typ))
             return val
@@ -129,6 +123,23 @@ class PurFile:
 
             erase(48)
             return matrix
+
+        def unpack_rgb():
+            rgb = [unpack_erase(">H"),
+                   unpack_erase(">H"),
+                   unpack_erase(">H")]
+            return rgb
+
+        def hsv_to_rgb(hsv):
+            rgb = list(colorsys.hsv_to_rgb(hsv[0]/35900, hsv[1]/65535, hsv[2]/65535))
+            rgb = [int(i*65535) for i in rgb]
+            return rgb
+
+        def unpack_string():
+            length = unpack_erase(">I")
+            string = pur_bytes[0:length].decode("utf-16-be", errors="replace")
+            erase(length)
+            return string
 
         def read_header():
             # total_text_items = unpack('>H', 12, 14) - unpack('>H', 14, 16)
@@ -210,117 +221,86 @@ class PurFile:
                     if unpack(">i", 0, 4) == -1:
                         erase(4)
                     else:
-                        transform.source = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-16-be", errors="replace")
-                        erase(4 + unpack(">I", 0, 4))
+                        transform.source = unpack_string()
 
                     # Read&Remove name
                     if not brute_force_loaded:
                         if unpack(">i", 0, 4) == -1:
                             erase(4)
                         else:
-                            transform.name = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-16-be", errors="replace")
-                            erase(4 + unpack(">I", 0, 4))
+                            transform.name = unpack_string()
 
-                    # Unknown permanent 1.0 float we don't want
-                    if unpack(">d", 0, 8) != 1.0:
-                        print("Notice: mysterious permanent float is not 1.0 (investigate?) ", unpack(">d", 0, 8))
-                    erase(8)
+                    erase(8)  # Unknown permanent 1.0 float we don't want
 
                     transform.matrix = unpack_matrix()  # Scaling and rotation matrix
-                    transform.x = unpack_delete(">d")  # Location
-                    transform.y = unpack_delete(">d")
+                    transform.x = unpack_erase(">d")  # Location
+                    transform.y = unpack_erase(">d")
 
-                    # Second unknown permanent 1.0 float we don't want
-                    if unpack(">d", 0, 8) != 1.0:
-                        print("Notice: mysterious permanent float2 is not 1.0 (investigate?) ", unpack(">d", 0, 8))
-                    erase(8)
+                    erase(8)  # Second unknown permanent 1.0 float we don't want
 
-                    transform.id = unpack_delete(">I")
-                    transform.zLayer = unpack_delete(">d")
+                    transform.id = unpack_erase(">I")
+                    transform.zLayer = unpack_erase(">d")
                     transform.matrixBeforeCrop = unpack_matrix()  # Time for matrixBeforeCrop for scaling & rotation
-                    transform.xCrop = unpack_delete(">d")  # Location before crop
-                    transform.yCrop = unpack_delete(">d")
-                    transform.scaleCrop = unpack_delete(">d")  # Finally crop scale
+                    transform.xCrop = unpack_erase(">d")  # Location before crop
+                    transform.yCrop = unpack_erase(">d")
+                    transform.scaleCrop = unpack_erase(">d")  # Finally crop scale
 
                     # Points of crop
                     # Why are there n+1? No idea but the first seems to be a copy of the last, maybe it's offset
-                    point_count = unpack_delete(">I")
+                    point_count = unpack_erase(">I")
                     transform.points = [[], []]
 
                     for _ in range(point_count):
                         erase(4)
-                        transform.points[0].append(unpack_delete(">d"))
-                        transform.points[1].append(unpack_delete(">d"))
+                        transform.points[0].append(unpack_erase(">d"))
+                        transform.points[1].append(unpack_erase(">d"))
 
                     erase(transform_end - read_pin)  # Remove any bytes left in the transform
                     image_items.append(transform)
 
-                #
-                # Text item
-                #
                 elif unpack(">I", 8, 12) == graphics_text_item:
 
                     text_transform = PurGraphicsTextItem()
                     erase(12 + unpack(">I", 8, 12))  # Remove textItem standard text
 
                     # Read the text
-                    text_transform.text = pur_bytes[4:4 + unpack(">I", 0, 4)].decode("utf-16-be", errors="replace")
-                    erase(4 + unpack(">I", 0, 4))
+                    text_transform.text = unpack_string()
                     # Time for matrix for scaling & rotation
                     text_transform.matrix = unpack_matrix()
 
                     # Location
-                    text_transform.x = unpack_delete(">d")
-                    text_transform.y = unpack_delete(">d")
+                    text_transform.x = unpack_erase(">d")
+                    text_transform.y = unpack_erase(">d")
 
-                    # text unknown permanent 1.0 float we don't want
-                    if unpack(">d", 0, 8) != 1.0:
-                        print("Notice: mysterious text permanent float is not 1.0 (investigate?) ",
-                              unpack(">d", 0, 8))
-                    erase(8)
+                    erase(8)  # text unknown permanent 1.0 float we don't want
 
                     # These have an id too
-                    text_transform.id = unpack_delete(">I")
+                    text_transform.id = unpack_erase(">I")
 
                     # Z layer
-                    text_transform.zLayer = unpack_delete(">d")
+                    text_transform.zLayer = unpack_erase(">d")
 
                     # byte indicating RGB or HSV
-                    is_hsv = unpack_delete('>b') == 2
+                    is_hsv = unpack_erase('>b') == 2
 
                     # Opacity
-                    text_transform.opacity = unpack_delete(">H")
+                    text_transform.opacity = unpack_erase(">H")
                     # RGB
-                    text_transform.rgb[0] = unpack_delete(">H")
-                    text_transform.rgb[1] = unpack_delete(">H")
-                    text_transform.rgb[2] = unpack_delete(">H")
+                    text_transform.rgb = unpack_rgb()
 
                     if is_hsv:
-                        text_transform.rgb = list(colorsys.hsv_to_rgb((text_transform.rgb[0]) / 35900,
-                                                                      (text_transform.rgb[1]) / 65535,
-                                                                      (text_transform.rgb[2]) / 65535))
-                        text_transform.rgb[0] = int(text_transform.rgb[0] * 65535)
-                        text_transform.rgb[1] = int(text_transform.rgb[1] * 65535)
-                        text_transform.rgb[2] = int(text_transform.rgb[2] * 65535)
+                        text_transform.rgb = hsv_to_rgb(text_transform.rgb)
                     # Unknown 2 bytes and is hsv byte
                     erase(2)
-                    is_background_hsv = unpack_delete(">b") == 2
+                    is_background_hsv = unpack_erase(">b") == 2
 
                     # BackgroundOpacity
-                    text_transform.opacityBackground = unpack_delete(">H")
+                    text_transform.opacityBackground = unpack_erase(">H")
                     # BackgroundRGB
-                    text_transform.rgbBackground[0] = unpack_delete(">H")
-                    text_transform.rgbBackground[1] = unpack_delete(">H")
-                    text_transform.rgbBackground[2] = unpack_delete(">H")
+                    text_transform.rgbBackground = unpack_rgb()
 
                     if is_background_hsv:
-                        text_transform.rgbBackground = list(colorsys.hsv_to_rgb(
-                            (text_transform.rgbBackground[0]) / 35900,
-                            (text_transform.rgbBackground[1]) / 65535,
-                            (text_transform.rgbBackground[2]) / 65535))
-                        text_transform.rgbBackground[0] = int(text_transform.rgbBackground[0] * 65535)
-                        text_transform.rgbBackground[1] = int(text_transform.rgbBackground[1] * 65535)
-                        text_transform.rgbBackground[2] = int(text_transform.rgbBackground[2] * 65535)
+                        text_transform.rgbBackground = hsv_to_rgb(text_transform.rgbBackground)
                     self.text.append(text_transform)
                     erase(transform_end - read_pin)
                 else:
@@ -338,8 +318,7 @@ class PurFile:
         read_items()  # Read all the items, and add them to the image_items list
 
         # After the final item, the header file_length is reached. This marks the beginning of the location and refs
-        self.folderLocation = pur_bytes[4:4+unpack(">I", 0, 4)].decode("utf-16-be")
-        erase(4+unpack(">I", 0, 4))
+        self.folderLocation = unpack_string()
 
         # Read the refs, these couple images to their transform item
         # Put transforms in their image (including empty duplicate images as if they were real images, for now)
