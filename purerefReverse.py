@@ -316,9 +316,9 @@ class PurFile:
         # After the final item, the header file_length is reached. This marks the beginning of the location and refs
         self.folderLocation = unpack_string()
 
-        # Read the refs, these couple images to their transform item
-        # Put transforms in their image (including empty duplicate images as if they were real images, for now)
-        for _ in range(total_image_items):
+        # From now on the rest of the file is just a list coupling transform IDs (GraphicsImageItem)
+        # with the address of the image (PurImage) it uses. Duplicate images are included and are removed later.
+        for _ in range(total_image_items):  # Put transforms in their image
             red_id = unpack(">I", 0, 4)
             ref_address = [unpack(">Q", 4, 12), unpack(">Q", 12, 20)]
             for item in image_items:
@@ -331,7 +331,9 @@ class PurFile:
 
         # Remove all duplicate images, and add their transform to the original image.
         # Duplicate images only have 4 bytes of pngBinary, which is actually the transform.id of the original image
-        for image in self.images:
+        # We need to determine if pngBinary of an image is 4 bytes (meaning it's not image data but a transform ID,
+        # and if it is, remove it and add its transform to the original image
+        for image in self.images:  # Remove duplicate images and add their transform to the original image
             if len(image.pngBinary) == 4:
                 for other_image in self.images:
                     if struct.unpack('>I', image.pngBinary)[0] == other_image.transforms[0].id:
@@ -369,7 +371,7 @@ class PurFile:
             nonlocal pur_bytes
             pur_bytes = bytearray(b'\x00') * 224  # 224 empty bytes to fill the header with
             pur_bytes[0:4] = struct.pack(">I", 8)  # Needed to recognize the file as a PureRef file
-            pur_bytes[4:12] = "1.10".encode("utf-16-be")  # Version
+            pur_bytes[4:12] = "1.10".encode("utf-16-be")  # Version, 1.11.1 still uses 1.10 format
 
             # Write GraphicsImageItem+GraphicsTextItem count and GraphicsImageItem count
             image_items = self.count_image_items()  # Assign IDs to image items
@@ -441,7 +443,7 @@ class PurFile:
                     transform_end = len(pur_bytes)
                     pack_add(">Q", 0)
                     # Purimageitem text
-                    brute_force_loaded = transform.source == "brute_force_loaded"
+                    brute_force_loaded = transform.source == "BruteForceLoaded"
                     pack_add(">I", 34)
                     pur_bytes += "GraphicsImageItem".encode("utf-16-be")
                     # Is bruteforceloaded there is an extra empty 8 byte
@@ -539,9 +541,9 @@ class PurFile:
         write_items()  # Write image and text items, in the right order
 
         pack_add_string(os.getcwd())  # Length location
+        pur_bytes[16:24] = struct.pack(">Q", len(pur_bytes))  # Update header file_length, which is where refs begin
 
-        pur_bytes[16:24] = struct.pack(">Q", len(pur_bytes))  # Update header, begin of references
-
+        # Write references which couple image addresses to transform IDs
         for reference in references:
             pack_add(">I", reference[0])
             pack_add(">Q", reference[1])

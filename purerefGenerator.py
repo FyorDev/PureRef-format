@@ -32,7 +32,7 @@ def generate(read_folder, write_file):
         image = Image.open(read_folder + "/" + file)
         image = image.convert(mode="RGB")
         with BytesIO() as f:
-            image.save(f, format="PNG", compress_level=7)  # TODO: research what PureRef does to generate different PNGs
+            image.save(f, format="PNG", compress_level=7)  # TODO: research why PureRef saves PNG differently sometimes
             png_bin = f.getvalue()  # convert to bytes
 
         pur_image = purerefReverse.PurImage()
