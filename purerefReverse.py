@@ -95,6 +95,14 @@ class PurFile:
                 count += 1
         return count
 
+    def count_text_items(self, offset):  # Text IDs start after image IDs (offset)
+        # Count the amount of text transforms and assign their IDs
+        count = 0
+        for text in self.text:
+            text.id = count + offset
+            count += 1
+        return count
+
     # Import a .pur file into this object
     def read(self, file: str):
         pur_bytes = bytearray(open(file, "rb").read())
@@ -217,14 +225,12 @@ class PurFile:
                         erase(4)
                         print("BruteForceLoad")
 
-                    # Read&Remove source
-                    if unpack(">i", 0, 4) == -1:
+                    if unpack(">i", 0, 4) == -1:  # Read&Remove source
                         erase(4)
                     else:
                         transform.source = unpack_string()
 
-                    # Read&Remove name
-                    if not brute_force_loaded:
+                    if not brute_force_loaded:  # Read&Remove name
                         if unpack(">i", 0, 4) == -1:
                             erase(4)
                         else:
@@ -263,48 +269,38 @@ class PurFile:
                     text_transform = PurGraphicsTextItem()
                     erase(12 + unpack(">I", 8, 12))  # Remove textItem standard text
 
-                    # Read the text
-                    text_transform.text = unpack_string()
-                    # Time for matrix for scaling & rotation
-                    text_transform.matrix = unpack_matrix()
+                    text_transform.text = unpack_string()  # Read the text
 
-                    # Location
-                    text_transform.x = unpack_erase(">d")
+                    text_transform.matrix = unpack_matrix()  # Time for matrix for scaling & rotation
+                    text_transform.x = unpack_erase(">d")  # Location
                     text_transform.y = unpack_erase(">d")
 
                     erase(8)  # text unknown permanent 1.0 float we don't want
 
-                    # These have an id too
                     text_transform.id = unpack_erase(">I")
+                    text_transform.zLayer = unpack_erase(">d")  # Z layer
 
-                    # Z layer
-                    text_transform.zLayer = unpack_erase(">d")
-
-                    # byte indicating RGB or HSV
-                    is_hsv = unpack_erase('>b') == 2
-
-                    # Opacity
-                    text_transform.opacity = unpack_erase(">H")
-                    # RGB
-                    text_transform.rgb = unpack_rgb()
-
+                    # Foreground color
+                    is_hsv = unpack_erase('>b') == 2  # byte indicating RGB or HSV
+                    text_transform.opacity = unpack_erase(">H")  # Opacity
+                    text_transform.rgb = unpack_rgb()  # RGB
                     if is_hsv:
                         text_transform.rgb = hsv_to_rgb(text_transform.rgb)
-                    # Unknown 2 bytes and is hsv byte
-                    erase(2)
-                    is_background_hsv = unpack_erase(">b") == 2
 
-                    # BackgroundOpacity
-                    text_transform.opacityBackground = unpack_erase(">H")
-                    # BackgroundRGB
-                    text_transform.rgbBackground = unpack_rgb()
+                    erase(2)  # Unknown 2 bytes
 
+                    # Background color
+                    is_background_hsv = unpack_erase(">b") == 2  # Byte indicating RGB or HSV, this is really stupid
+                    text_transform.opacityBackground = unpack_erase(">H")  # BackgroundOpacity
+                    text_transform.rgbBackground = unpack_rgb()  # BackgroundRGB
                     if is_background_hsv:
                         text_transform.rgbBackground = hsv_to_rgb(text_transform.rgbBackground)
+
                     self.text.append(text_transform)
                     erase(transform_end - read_pin)
+
                 else:
-                    print("Error! Unknown item")
+                    print("Error! Unknown item")  # Maybe more items will be added in the future
                     break
 
         ################################################################################################################
@@ -364,26 +360,28 @@ class PurFile:
             for value in rgb:
                 pur_bytes += struct.pack(">H", value)
 
+        def pack_add_string(string: str):
+            nonlocal pur_bytes
+            pack_add(">I", len(string.encode("utf-16-be")))
+            pur_bytes += string.encode("utf-16-be")
+
         def write_header():
-            # A standard empty header for PureRef 1.11
             nonlocal pur_bytes
             pur_bytes = bytearray(b'\x00') * 224  # 224 empty bytes to fill the header with
             pur_bytes[0:4] = struct.pack(">I", 8)  # Needed to recognize the file as a PureRef file
             pur_bytes[4:12] = "1.10".encode("utf-16-be")  # Version
 
             # Write GraphicsImageItem+GraphicsTextItem count and GraphicsImageItem count
-            image_items = self.count_image_items()
-            pur_bytes[12:14] = struct.pack(">H", image_items + len(self.text))
+            image_items = self.count_image_items()  # Assign IDs to image items
+            text_items = self.count_text_items(image_items)  # Assign IDs to text items
+            pur_bytes[12:14] = struct.pack(">H", image_items + text_items)
             pur_bytes[14:16] = struct.pack(">H", image_items)
 
             pur_bytes[24:28] = struct.pack(">I", 12)  # Unknown, needed for valid header
             pur_bytes[40:44] = struct.pack(">I", 64)  # Unknown, needed for valid header
 
             # Write (and assign) GraphicsImageItem ID count, not usually the same, but we discard unused transform IDs
-            pur_bytes[108:112] = struct.pack(">I", image_items + len(self.text))
-            # ImageItems received IDs in CountImageItems(), now give text their own ID
-            for i in range(len(self.text)):
-                self.text[i].id = image_items + i
+            pur_bytes[108:112] = struct.pack(">I", image_items + text_items)
 
             # Write canvas width and height
             pur_bytes[112:144] = (
@@ -392,15 +390,13 @@ class PurFile:
                 struct.pack(">d", self.canvas[2]) +
                 struct.pack(">d", self.canvas[3])
             )
-            # Write canvas view zoom, you want x and y zoom to be the same
-            pur_bytes[144:152] = struct.pack(">d", self.zoom)
-            pur_bytes[176:184] = struct.pack(">d", self.zoom)
 
-            # Zoom multiplier, should always be 1.0
-            pur_bytes[208:216] = struct.pack(">d", 1.0)
+            pur_bytes[144:152] = struct.pack(">d", self.zoom)  # Write canvas view zoom
+            pur_bytes[176:184] = struct.pack(">d", self.zoom)  # you want x and y zoom to be the same
 
-            # Write canvas view X and Y
-            pur_bytes[216:224] = struct.pack(">i", self.xCanvas) + struct.pack(">i", self.yCanvas)
+            pur_bytes[208:216] = struct.pack(">d", 1.0)  # Zoom multiplier, should always be 1.0
+
+            pur_bytes[216:224] = struct.pack(">i", self.xCanvas) + struct.pack(">i", self.yCanvas)  # Canvas view X Y
 
         def write_images():
             nonlocal pur_bytes
@@ -440,8 +436,6 @@ class PurFile:
                 references_zip = sorted(references_zip, key=lambda x: x[0][1])
                 references, transforms_ordered = map(list, zip(*references_zip))
 
-            # Add transforms
-
                 for transform in transforms_ordered:
                     # transform_end prints current writePin for now to replace later
                     transform_end = len(pur_bytes)
@@ -454,37 +448,26 @@ class PurFile:
                     if brute_force_loaded:
                         pack_add(">I", 0)
                     # Source
-                    pur_bytes += struct.pack(">I", len(transform.source.encode("utf-16-be")))
-                    pur_bytes += transform.source.encode("utf-16-be")
+                    pack_add_string(transform.source)
                     # Name (skipped if bruteforceloaded)
                     # PureRef can have empty names, but we have brute_force_loaded as default
                     if not brute_force_loaded:
-                        pack_add(">I", len(transform.name.encode("utf-16-be")))
-                        pur_bytes += transform.name.encode("utf-16-be")
+                        pack_add_string(transform.name)
 
-                    #
-                    # Start actual transform
-                    #
+                    pack_add(">d", 1.0)  # Mysterious 1.0 double
 
-                    # Mysterious 1.0 double
-                    pack_add(">d", 1.0)
-                    # Scaling matrix
-                    pack_add_matrix(transform.matrix)
-                    # Location
-                    pack_add(">d", transform.x)
+                    pack_add_matrix(transform.matrix)  # Scaling matrix
+                    pack_add(">d", transform.x)  # Location
                     pack_add(">d", transform.y)
-                    # Mysterious 1.0 double
-                    pack_add(">d", 1.0)
-                    # ID and ZLayer
-                    pack_add(">I", transform.id)
+
+                    pack_add(">d", 1.0)  # Mysterious 1.0 double
+
+                    pack_add(">I", transform.id)  # ID and ZLayer
                     pack_add(">d", transform.zLayer)
-                    # MatrixBeforeCrop
-                    pack_add_matrix(transform.matrixBeforeCrop)
-                    # Location before crop
-                    pack_add(">d", transform.xCrop)
+                    pack_add_matrix(transform.matrixBeforeCrop)  # MatrixBeforeCrop
+                    pack_add(">d", transform.xCrop)  # Location before crop
                     pack_add(">d", transform.yCrop)
-                    # Finally crop scale
-                    pack_add(">d", transform.scaleCrop)
+                    pack_add(">d", transform.scaleCrop)  # Finally crop scale
 
                     # Number of crop points
                     pack_add(">I", len(transform.points[0]))
@@ -496,7 +479,7 @@ class PurFile:
                         pack_add(">d", transform.points[0][i])
                         pack_add(">d", transform.points[1][i])
 
-                    # No idea if this actually holds information, but it always looks the same
+                    # Always the same, no idea if this actually holds information
                     pack_add(">d", 0.0)
                     pack_add(">I", 1)
                     pack_add(">b", 0)
@@ -506,10 +489,6 @@ class PurFile:
                     # Start of transform needs its own end address
                     pur_bytes[transform_end:transform_end+8] = struct.pack(">Q", len(pur_bytes))
 
-            #
-            # DONE image transforms loaded
-            #
-
             # Time for text
             for textTransform in self.text:
                 transform_end = len(pur_bytes)
@@ -518,34 +497,32 @@ class PurFile:
                 pur_bytes[transform_end:transform_end+8] = struct.pack(">Q", len(pur_bytes))
                 pack_add(">I", 32)
                 pur_bytes += "GraphicsTextItem".encode("utf-16-be")
-                # The text
-                pack_add(">I", len(textTransform.text.encode("utf-16-be")))
-                pur_bytes += textTransform.text.encode("utf-16-be")
 
-                # Matrix
-                pack_add_matrix(textTransform.matrix)
+                pack_add_string(textTransform.text)  # The text
 
-                # Location
-                pack_add(">d", textTransform.x)
+                pack_add_matrix(textTransform.matrix)  # Matrix
+                pack_add(">d", textTransform.x)  # Location
                 pack_add(">d", textTransform.y)
-                # Mysterious 1.0 float
-                pack_add(">d", 1.0)
-                # ID
-                pack_add(">I", textTransform.id)
-                # Zlayer
-                pack_add(">d", textTransform.zLayer)
-                # Weird meaningless byte
+
+                pack_add(">d", 1.0)  # Mysterious 1.0 double
+
+                pack_add(">I", textTransform.id)  # ID
+                pack_add(">d", textTransform.zLayer)  # Zlayer
+
+                pack_add(">b", 1)  # Weird meaningless byte
+
+                # Foreground color
+                pack_add(">H", textTransform.opacity)  # Opacity
+                pack_add_rgb(textTransform.rgb)  # RGB
+
+                pack_add(">H", 0)  # Mysterious values that counts something about background
                 pack_add(">b", 1)
-                # Opacity n RGB
-                pack_add(">H", textTransform.opacity)
-                pack_add_rgb(textTransform.rgb)
-                # Mysterious thing that counts something about background
-                pack_add(">H", 0)
-                pack_add(">b", 1)
-                # Background opacity n RGB
-                pack_add(">H", textTransform.opacityBackground)
-                pack_add_rgb(textTransform.rgbBackground)
-                pack_add(">I", 0)
+
+                # Background color
+                pack_add(">H", textTransform.opacityBackground)  # Opacity
+                pack_add_rgb(textTransform.rgbBackground)  # RGB
+
+                pack_add(">I", 0)  # Mysterious emptyness
                 pack_add(">H", 0)
 
                 # Start of transform needs its own end address
@@ -561,8 +538,7 @@ class PurFile:
 
         write_items()  # Write image and text items, in the right order
 
-        pack_add(">I", len(os.getcwd().encode("utf-16-be")))  # Length location
-        pur_bytes += os.getcwd().encode("utf-16-be")
+        pack_add_string(os.getcwd())  # Length location
 
         pur_bytes[16:24] = struct.pack(">Q", len(pur_bytes))  # Update header, begin of references
 
