@@ -1,4 +1,6 @@
-# PureRef-library  
+# PureRef-format  
+https://youtu.be/31lsz3JNtCU
+
 I have reverse engineered the .pur file format (PureRef 1.10 / 1.11.1) so you can automatically generate organised PureRef files from folders of images or use this library to convert to/from any other file format.
 
 ### Usage:  
