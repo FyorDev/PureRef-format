@@ -1,10 +1,10 @@
 import os
-import purerefGenerator
+import pureref_gen
 
 ####################################################################################################
-# Just run this with "python purerefArtistGenerator.py" in your command line inside the PureRef-format
+# Just run this with "python pureref_gen_script.py" in your command line inside the PureRef-format
 # folder. It will generate a folder for input (Artists) and output (Purs) for you.
-# Then you can put folders with images in the Artists folder and run "python purerefArtistGenerator.py"
+# Then you can put folders with images in the Artists folder and run "python pureref_gen_script.py"
 # again to generate the Purs.
 ####################################################################################################
 
@@ -22,7 +22,7 @@ if not os.path.exists(os.getcwd() + "/Purs/"):
 for folder in os.listdir(os.getcwd() + "/Artists"):
     if not os.path.exists(os.getcwd() + "/Purs/" + folder + ".pur"):
         print("Creating " + folder + ".pur")
-        purerefGenerator.generate(os.getcwd() + "/Artists/" + folder, os.getcwd() + "/Purs/" + folder + ".pur")
+        pureref_gen.generate(os.getcwd() + "/Artists/" + folder, os.getcwd() + "/Purs/" + folder + ".pur")
     else:
         print("File already exists, skipping " + folder)
 
