@@ -24,7 +24,12 @@ def generate(read_folder, write_file):
     # All images in read_folder will be added to pur_file
     # The images will be sorted using natural sort
     # So you can number them to control the order
-    for file in sorted(os.listdir(read_folder), key=natural_keys):
+    files = sorted(os.listdir(read_folder), key=natural_keys)
+    if len(files) == 0:
+        print("Skipping, no images found in " + read_folder)
+        return
+
+    for file in files:
         if not (file.endswith(".jpg") or file.endswith(".jpeg") or file.endswith(".png")):
             continue
 

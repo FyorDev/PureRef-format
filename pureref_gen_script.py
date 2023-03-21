@@ -9,16 +9,16 @@ import sys
 # again to generate the Purs.
 ####################################################################################################
 
-imagefolder_path = os.getcwd() + "/Artists"
+imagefolder_path = os.getcwd() + "/Artists"  # default input
 
-purfolder_path = os.getcwd() + "/Purs"
+purfolder_path = os.getcwd() + "/Purs"  # default output
 
 # if you give the script two arguments, it will use these for the imagefolder and purfolder
 if len(sys.argv) > 1:
     imagefolder_path = os.path.abspath(sys.argv[1])
     purfolder_path = os.path.abspath(sys.argv[2])
 
-# This is where you put folders with JPG or PNG images
+# This is where you put folders with JPG or PNG images, or directly put JPG or PNG images here if there are no folders
 if not os.path.exists(imagefolder_path):
     os.mkdir(imagefolder_path)
 
@@ -26,19 +26,16 @@ if not os.path.exists(imagefolder_path):
 if not os.path.exists(purfolder_path):
     os.mkdir(purfolder_path)
 
-# Turn all folders with images in Artists/ into .pur files in Purs/
-# Unless the .pur already exists, so you can edit it
-# If you want to regenerate it, you need to delete the .pur file
-# only if it is a dir
-folders = next(os.walk(imagefolder_path))[1]
+folders = next(os.walk(imagefolder_path))[1]  # get all subfolders in imagefolder_path
 
-# if there are no folders, use the root folder since the images might be there instead
+# if there are no folders, try to use the root folder since the images might be there instead
 if len(folders) == 0:
-    # current directory name
-    folders = [os.path.basename(imagefolder_path)]
-    # subtract last directory
-    imagefolder_path = "/".join(imagefolder_path.split("/")[:-1])
+    print("No folders found in " + imagefolder_path + ", using root folder instead")
+    folders = [os.path.basename(imagefolder_path)]  # name of the last directory
+    imagefolder_path = "/".join(imagefolder_path.split("/")[:-1])  # subtract last directory from the path
 
+# Turn all folders with images in imagefolder_path into .pur files in purfolder_path
+# Unless the .pur already exists, if you want to regenerate it, you need to delete the .pur file
 for folder in folders:
     if not os.path.exists(purfolder_path + "/" + folder + ".pur"):
         print("Creating " + folder + ".pur")
