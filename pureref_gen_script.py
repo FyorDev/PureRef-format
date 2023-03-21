@@ -1,5 +1,6 @@
 import os
 import pureref_gen
+import sys
 
 ####################################################################################################
 # Just run this with "python pureref_gen_script.py" in your command line inside the PureRef-format
@@ -8,21 +9,40 @@ import pureref_gen
 # again to generate the Purs.
 ####################################################################################################
 
+imagefolder_path = os.getcwd() + "/Artists"
+
+purfolder_path = os.getcwd() + "/Purs"
+
+# if you give the script two arguments, it will use these for the imagefolder and purfolder
+if len(sys.argv) > 1:
+    imagefolder_path = os.path.abspath(sys.argv[1])
+    purfolder_path = os.path.abspath(sys.argv[2])
+
 # This is where you put folders with JPG or PNG images
-if not os.path.exists(os.getcwd() + "/Artists/"):
-    os.mkdir(os.getcwd() + "/Artists/")
+if not os.path.exists(imagefolder_path):
+    os.mkdir(imagefolder_path)
 
 # This is where PureRef files come out
-if not os.path.exists(os.getcwd() + "/Purs/"):
-    os.mkdir(os.getcwd() + "/Purs/")
+if not os.path.exists(purfolder_path):
+    os.mkdir(purfolder_path)
 
 # Turn all folders with images in Artists/ into .pur files in Purs/
 # Unless the .pur already exists, so you can edit it
 # If you want to regenerate it, you need to delete the .pur file
-for folder in os.listdir(os.getcwd() + "/Artists"):
-    if not os.path.exists(os.getcwd() + "/Purs/" + folder + ".pur"):
+# only if it is a dir
+folders = next(os.walk(imagefolder_path))[1]
+
+# if there are no folders, use the root folder since the images might be there instead
+if len(folders) == 0:
+    # current directory name
+    folders = [os.path.basename(imagefolder_path)]
+    # subtract last directory
+    imagefolder_path = "/".join(imagefolder_path.split("/")[:-1])
+
+for folder in folders:
+    if not os.path.exists(purfolder_path + "/" + folder + ".pur"):
         print("Creating " + folder + ".pur")
-        pureref_gen.generate(os.getcwd() + "/Artists/" + folder, os.getcwd() + "/Purs/" + folder + ".pur")
+        pureref_gen.generate(imagefolder_path + "/" + folder, purfolder_path + "/" + folder + ".pur")
     else:
         print("File already exists, skipping " + folder)
 
