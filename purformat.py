@@ -261,6 +261,7 @@ class PurFile:
                         transform.points[0].append(unpack_erase(">d"))
                         transform.points[1].append(unpack_erase(">d"))
 
+                    children = (unpack(">I", 21, 25))
                     erase(transform_end - read_pin)  # Remove any bytes left in the transform
                     image_items.append(transform)
 
@@ -296,8 +297,9 @@ class PurFile:
                     if is_background_hsv:
                         text_transform.rgbBackground = hsv_to_rgb(text_transform.rgbBackground)
 
-                    self.text.append(text_transform)
+                    children = unpack(">I", 2, 6)
                     erase(transform_end - read_pin)
+                    self.text.append(text_transform)
 
                 else:
                     print("Error! Unknown item")  # Maybe more items will be added in the future
@@ -491,7 +493,7 @@ class PurFile:
                     pack_add(">I", 1)
                     pack_add(">b", 0)
                     pack_add(">q", -1)
-                    pack_add(">I", 0)
+                    pack_add(">I", 0)  # how many text children
 
                     # Start of transform needs its own end address
                     pur_bytes[transform_end:transform_end+8] = struct.pack(">Q", len(pur_bytes))
@@ -529,8 +531,8 @@ class PurFile:
                 pack_add(">H", textTransform.opacityBackground)  # Opacity
                 pack_add_rgb(textTransform.rgbBackground)  # RGB
 
-                pack_add(">I", 0)  # Mysterious emptyness
                 pack_add(">H", 0)
+                pack_add(">I", 0)  # how many text children
 
                 # Start of transform needs its own end address
                 pur_bytes[transform_end:transform_end+8] = struct.pack(">Q", len(pur_bytes))
