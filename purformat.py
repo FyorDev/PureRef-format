@@ -3,18 +3,24 @@ import struct
 import colorsys
 
 
-# Similar to image transform, but this carries its own content (text)
-class PurGraphicsTextItem:
-    # Part of a PureRefObj
-
+# Abstract item class
+class Item:
     def __init__(self):
-        self.text = ""
+        self.id = 0
+        self.zLayer = 1.0
         self.matrix = \
             [1.0, 0.0,
              0.0, 1.0]
         self.x, self.y = 0.0, 0.0
-        self.zLayer = 1.0
-        self.id = 0
+
+
+# Similar to image transform, but this carries its own content (text)
+class PurGraphicsTextItem(Item):
+    # Part of a PureRefObj
+
+    def __init__(self):
+        super().__init__()
+        self.text = ""
         self.opacity = 65535
         self.rgb = \
             [65535,
@@ -24,20 +30,15 @@ class PurGraphicsTextItem:
         self.rgbBackground = [0, 0, 0]
 
 
-class PurGraphicsImageItem:
+class PurGraphicsImageItem(Item):
     # Part of a PurImage
     # Be aware: PureRef transforms have an alternative second format for
     # rotated cropping where the image is no longer a rectangle
 
     def __init__(self):
+        super().__init__()
         self.source = "BruteForceLoaded"
         self.name = "image"
-        self.matrix = \
-            [1.0, 0.0,
-             0.0, 1.0]
-        self.x, self.y = 0.0, 0.0
-        self.id = 0
-        self.zLayer = 1.0
         self.matrixBeforeCrop = \
             [1.0, 0.0,
              0.0, 1.0]
