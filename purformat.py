@@ -172,7 +172,7 @@ class PurFile:
             png_head = bytearray([137, 80, 78, 71, 13, 10, 26, 10])  # PNG header
             png_foot = bytearray([0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130])  # PNG footer
 
-            # Read all original images, and any duplicates along the way
+            # Read all original images, and any duplicates/links along the way
             while pur_bytes.__contains__(png_head):
 
                 start = pur_bytes.find(png_head)
@@ -329,16 +329,21 @@ class PurFile:
 
             erase(20)
 
+        # Image is duplicate if it has 4 bytes (transform.id) but it is not all 0xFF meaning an image link
+        def is_duplicate(img):
+            return len(img.pngBinary) == 4 and img.pngBinary != b'\xFF\xFF\xFF\xFF'
+
         # Remove all duplicate images, and add their transform to the original image.
         # Duplicate images only have 4 bytes of pngBinary, which is actually the transform.id of the original image
         # We need to determine if pngBinary of an image is 4 bytes (meaning it's not image data but a transform ID,
         # and if it is, remove it and add its transform to the original image
         for image in self.images:  # Remove duplicate images and add their transform to the original image
-            if len(image.pngBinary) == 4:
+            if is_duplicate(image):
                 for other_image in self.images:
                     if struct.unpack('>I', image.pngBinary)[0] == other_image.transforms[0].id:
                         other_image.transforms += image.transforms
-        self.images = [image for image in self.images if len(image.pngBinary) != 4]
+        # duplicates get removed, but links stay
+        self.images = [image for image in self.images if not is_duplicate(image)]
 
     # Export this object to a .pur file
     def write(self, file: str):
