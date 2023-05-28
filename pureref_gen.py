@@ -1,4 +1,4 @@
-import purformat.items
+import purformat.items as items
 from purformat import purformat
 from PIL import Image
 import os
@@ -41,13 +41,13 @@ def generate(read_folder, write_file):
             image.save(f, format="PNG", compress_level=7)  # TODO: research why PureRef saves PNG differently sometimes
             png_bin = f.getvalue()  # convert to bytes
 
-        pur_image = purformat.items.PurImage()
+        pur_image = items.PurImage()
         # PurImage doesn't save PIL images but raw PNG data because sometimes the binary data is actually a reference to
         # the transform of another image, in which case it is a duplicate.
         # So it's not always a PNG, and this is the easiest way to handle it. Might be worth changing one day.
         pur_image.pngBinary = png_bin  # save the image as PNG binary
 
-        pur_transform = purformat.items.PurGraphicsImageItem()
+        pur_transform = items.PurGraphicsImageItem()
         pur_transform.reset_crop(image.width, image.height)
         pur_transform.name = file.replace(".jpg", "")
         pur_transform.source = read_folder + "/" + file

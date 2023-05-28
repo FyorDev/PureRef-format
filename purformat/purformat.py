@@ -39,6 +39,7 @@ class PurFile:
             nonlocal count
 
             text_item.id = count + id_offset
+            count += 1
             for child in text_item.textChildren:
                 count_children(child)
 
