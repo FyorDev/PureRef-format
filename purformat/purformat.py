@@ -1,6 +1,6 @@
 from typing import List
 import os
-from .items import PurImage, PurGraphicsTextItem
+from purformat.items import PurImage, PurGraphicsTextItem
 
 ########################################################################################################################
 # The class this whole project is about
@@ -48,10 +48,10 @@ class PurFile:
 
     # Import a .pur file into this object
     def read(self, file: str):
-        from src.read import read_pur_file
+        from purformat.read import read_pur_file
         read_pur_file(self, file)
 
     # Export this object to a .pur file
     def write(self, file: str):
-        from src.write import write_pur_file
+        from purformat.write import write_pur_file
         write_pur_file(self, file)

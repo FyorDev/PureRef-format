@@ -1,7 +1,7 @@
 import struct
 import colorsys
-from .items import Item, PurImage, PurGraphicsImageItem, PurGraphicsTextItem
-from .purformat import PurFile
+from purformat.items import Item, PurImage, PurGraphicsImageItem, PurGraphicsTextItem
+from purformat.purformat import PurFile
 
 
 def read_pur_file(pur_file: PurFile, filepath: str):

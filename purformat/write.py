@@ -1,6 +1,6 @@
 import struct
-from .items import Item, PurGraphicsImageItem, PurGraphicsTextItem
-from .purformat import PurFile
+from purformat.items import Item, PurGraphicsImageItem, PurGraphicsTextItem
+from purformat.purformat import PurFile
 
 
 def write_pur_file(pur_file: PurFile, filepath: str):
