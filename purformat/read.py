@@ -9,7 +9,7 @@ def read_pur_file(pur_file: PurFile, filepath: str):
     pur_bytes = bytearray(open(filepath, "rb").read())
     read_pin = 0
     total_image_items = 0
-    image_items = []
+    image_items: list[PurGraphicsImageItem] = []
 
     def erase(length):  # Remove n bytes from bytearray
         pur_bytes[0:length] = []

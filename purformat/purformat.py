@@ -22,6 +22,16 @@ class PurFile:
         self.images: List[PurImage] = []  # image list
         self.text: List[PurGraphicsTextItem] = []  # text list
 
+    # Import a .pur file into this object
+    def read(self, file: str):
+        from purformat.read import read_pur_file
+        read_pur_file(self, file)
+
+    # Export this object to a .pur file
+    def write(self, file: str):
+        from purformat.write import write_pur_file
+        write_pur_file(self, file)
+
     def count_image_items(self):
         # Count the amount of image transforms and assign their IDs
         count = 0
@@ -40,19 +50,8 @@ class PurFile:
 
             text_item.id = count + id_offset
             count += 1
-            for child in text_item.textChildren:
-                count_children(child)
+            map(count_children, text_item.textChildren)
 
         map(count_children, self.text)
 
         return len(self.text)  # the header only wants to know direct children
-
-    # Import a .pur file into this object
-    def read(self, file: str):
-        from purformat.read import read_pur_file
-        read_pur_file(self, file)
-
-    # Export this object to a .pur file
-    def write(self, file: str):
-        from purformat.write import write_pur_file
-        write_pur_file(self, file)
