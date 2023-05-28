@@ -1,8 +1,6 @@
 from typing import List
 import os
-import struct
-import colorsys
-from .items import PurImage, PurGraphicsImageItem, PurGraphicsTextItem
+from .items import PurImage, PurGraphicsTextItem
 
 ########################################################################################################################
 # The class this whole project is about

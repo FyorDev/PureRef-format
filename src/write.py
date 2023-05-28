@@ -1,6 +1,5 @@
 import struct
-import colorsys
-from .items import Item, PurImage, PurGraphicsImageItem, PurGraphicsTextItem
+from .items import Item, PurGraphicsImageItem, PurGraphicsTextItem
 from .purformat import PurFile
 
 
