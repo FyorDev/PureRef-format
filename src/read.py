@@ -1,6 +1,6 @@
 import struct
 import colorsys
-from .items import PurImage, PurGraphicsImageItem, PurGraphicsTextItem
+from .items import Item, PurImage, PurGraphicsImageItem, PurGraphicsTextItem
 from .purformat import PurFile
 
 
@@ -153,7 +153,7 @@ def read_pur_file(pur_file: PurFile, filepath: str):
 
             return text_transform
 
-        def add_text_children(parent, number_of_children):
+        def add_text_children(parent: Item, number_of_children: int):
             for _ in range(number_of_children):
                 text = unpack_graphics_text_item()
                 parent.textChildren.append(text)

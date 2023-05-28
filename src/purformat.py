@@ -1,3 +1,4 @@
+from typing import List
 import os
 import struct
 import colorsys
@@ -20,8 +21,8 @@ class PurFile:
         self.zoom = 1.0  # View zoom level
         self.xCanvas, self.yCanvas = 0, 0  # View location
         self.folderLocation = os.getcwd()
-        self.images = []  # image list
-        self.text = []  # text list
+        self.images: List[PurImage] = []  # image list
+        self.text: List[PurGraphicsTextItem] = []  # text list
 
     def count_image_items(self):
         # Count the amount of image transforms and assign their IDs
@@ -32,14 +33,14 @@ class PurFile:
                 count += 1
         return count
 
-    def count_text_items(self, offset):  # Text IDs start after image IDs (offset)
+    def count_text_items(self, id_offset: int):  # Text IDs start after image IDs (offset)
         # Count the amount of text transforms and assign their IDs
         count = 0
 
         def count_children(text):
             nonlocal count
 
-            text.id = count + offset
+            text.id = count + id_offset
             for child in text.textChildren:
                 count_children(child)
 

@@ -1,3 +1,6 @@
+from typing import List
+
+
 # Abstract item class
 class Item:
     def __init__(self):
@@ -7,7 +10,7 @@ class Item:
             [1.0, 0.0,
              0.0, 1.0]
         self.x, self.y = 0.0, 0.0
-        self.textChildren = []  # both text and image items can have text children
+        self.textChildren: List[PurGraphicsTextItem] = []  # both text and image items can have text children
 
 
 # Similar to image transform, but this carries its own content (text)
@@ -60,4 +63,4 @@ class PurImage:
     def __init__(self):
         self.address = [0, 0]  # original location for identification
         self.pngBinary = bytearray()  # image data
-        self.transforms = []  # transforms[] for multiple instances
+        self.transforms: List[PurGraphicsImageItem] = []  # transforms[] for multiple instances

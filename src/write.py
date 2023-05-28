@@ -1,6 +1,6 @@
 import struct
 import colorsys
-from .items import PurImage, PurGraphicsImageItem, PurGraphicsTextItem
+from .items import Item, PurImage, PurGraphicsImageItem, PurGraphicsTextItem
 from .purformat import PurFile
 
 
@@ -89,7 +89,7 @@ def write_pur_file(pur_file: PurFile, filepath: str):
 
                 transform_num += 1
 
-    def write_text(text_transform):
+    def write_text(text_transform: PurGraphicsTextItem):
         nonlocal pur_bytes
         nonlocal text_items
         transform_end = len(pur_bytes)
@@ -132,13 +132,13 @@ def write_pur_file(pur_file: PurFile, filepath: str):
         # Write text children
         write_text_children(text_transform)
 
-    def write_text_children(item):
+    def write_text_children(item: Item):
         nonlocal text_items
         for text_child in item.textChildren:
             write_text(text_child)
             text_items += 1
 
-    def write_image(transform):
+    def write_image(transform: PurGraphicsImageItem):
         nonlocal pur_bytes
 
         # transform_end prints current writePin for now to replace later
