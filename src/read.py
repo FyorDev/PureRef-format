@@ -153,6 +153,63 @@ def read_pur_file(pur_file: PurFile, filepath: str):
 
             return text_transform
 
+        def unpack_graphics_image_item():
+
+            transform_end = unpack(">Q", 0, 8)  # End address of either image or text transform
+
+            transform = PurGraphicsImageItem()
+            erase(12 + unpack(">I", 8, 12))  # Remove imageItem standard text
+
+            brute_force_loaded = False
+            if unpack(">I", 0, 4) == 0:  # Check if bruteforceloaded
+                brute_force_loaded = True
+                erase(4)
+                print("BruteForceLoad")
+
+            if unpack(">i", 0, 4) == -1:  # Read&Remove source
+                erase(4)
+            else:
+                transform.source = unpack_string()
+
+            if not brute_force_loaded:  # Read&Remove name
+                if unpack(">i", 0, 4) == -1:
+                    erase(4)
+                else:
+                    transform.name = unpack_string()
+
+            erase(8)  # Unknown permanent 1.0 float we don't want
+
+            transform.matrix = unpack_matrix()  # Scaling and rotation matrix
+            transform.x = unpack_erase(">d")  # Location
+            transform.y = unpack_erase(">d")
+
+            erase(8)  # Second unknown permanent 1.0 float we don't want
+
+            transform.id = unpack_erase(">I")
+            transform.zLayer = unpack_erase(">d")
+            transform.matrixBeforeCrop = unpack_matrix()  # Time for matrixBeforeCrop for scaling & rotation
+            transform.xCrop = unpack_erase(">d")  # Location before crop
+            transform.yCrop = unpack_erase(">d")
+            transform.scaleCrop = unpack_erase(">d")  # Finally crop scale
+
+            # Points of crop
+            # Why are there n+1? No idea but the first seems to be a copy of the last, maybe it's offset
+            point_count = unpack_erase(">I")
+            transform.points = [[], []]
+
+            for _ in range(point_count):
+                erase(4)
+                transform.points[0].append(unpack_erase(">d"))
+                transform.points[1].append(unpack_erase(">d"))
+
+            number_of_children = (unpack(">I", 21, 25))
+
+            erase(transform_end - read_pin)  # Remove any bytes left in the transform
+
+            add_text_children(transform, number_of_children)
+
+            return transform
+
         def add_text_children(parent: Item, number_of_children: int):
             for _ in range(number_of_children):
                 text = unpack_graphics_text_item()
@@ -163,65 +220,11 @@ def read_pur_file(pur_file: PurFile, filepath: str):
 
             if unpack(">I", 8, 12) == graphics_image_item:
 
-                transform_end = unpack(">Q", 0, 8)  # End address of either image or text transform
-
-                transform = PurGraphicsImageItem()
-                erase(12 + unpack(">I", 8, 12))  # Remove imageItem standard text
-
-                brute_force_loaded = False
-                if unpack(">I", 0, 4) == 0:  # Check if bruteforceloaded
-                    brute_force_loaded = True
-                    erase(4)
-                    print("BruteForceLoad")
-
-                if unpack(">i", 0, 4) == -1:  # Read&Remove source
-                    erase(4)
-                else:
-                    transform.source = unpack_string()
-
-                if not brute_force_loaded:  # Read&Remove name
-                    if unpack(">i", 0, 4) == -1:
-                        erase(4)
-                    else:
-                        transform.name = unpack_string()
-
-                erase(8)  # Unknown permanent 1.0 float we don't want
-
-                transform.matrix = unpack_matrix()  # Scaling and rotation matrix
-                transform.x = unpack_erase(">d")  # Location
-                transform.y = unpack_erase(">d")
-
-                erase(8)  # Second unknown permanent 1.0 float we don't want
-
-                transform.id = unpack_erase(">I")
-                transform.zLayer = unpack_erase(">d")
-                transform.matrixBeforeCrop = unpack_matrix()  # Time for matrixBeforeCrop for scaling & rotation
-                transform.xCrop = unpack_erase(">d")  # Location before crop
-                transform.yCrop = unpack_erase(">d")
-                transform.scaleCrop = unpack_erase(">d")  # Finally crop scale
-
-                # Points of crop
-                # Why are there n+1? No idea but the first seems to be a copy of the last, maybe it's offset
-                point_count = unpack_erase(">I")
-                transform.points = [[], []]
-
-                for _ in range(point_count):
-                    erase(4)
-                    transform.points[0].append(unpack_erase(">d"))
-                    transform.points[1].append(unpack_erase(">d"))
-
-                number_of_children = (unpack(">I", 21, 25))
-
-                erase(transform_end - read_pin)  # Remove any bytes left in the transform
-
-                add_text_children(transform, number_of_children)
-
-                image_items.append(transform)
+                image_items.append(unpack_graphics_image_item())
 
             elif unpack(">I", 8, 12) == graphics_text_item:
 
-                text = unpack_graphics_text_item()
-                pur_file.text.append(text)
+                pur_file.text.append(unpack_graphics_text_item())
 
             else:
                 print("Error! Unknown item")  # Maybe more items will be added in the future

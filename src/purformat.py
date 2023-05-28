@@ -35,15 +35,14 @@ class PurFile:
         # Count the amount of text transforms and assign their IDs
         count = 0
 
-        def count_children(text):
+        def count_children(text_item: PurGraphicsTextItem):
             nonlocal count
 
-            text.id = count + id_offset
-            for child in text.textChildren:
+            text_item.id = count + id_offset
+            for child in text_item.textChildren:
                 count_children(child)
 
-        for text in self.text:
-            count_children(text)
+        map(count_children, self.text)
 
         return len(self.text)  # the header only wants to know direct children
 

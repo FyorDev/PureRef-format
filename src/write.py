@@ -63,7 +63,7 @@ def write_pur_file(pur_file: PurFile, filepath: str):
 
         pur_bytes[208:216] = struct.pack(">d", 1.0)  # Zoom multiplier, should always be 1.0
 
-        pur_bytes[216:224] = struct.pack(">i", pur_file.xCanvas) + struct.pack(">i", pur_file.yCanvas)  # Canvas view X Y
+        pur_bytes[216:224] = struct.pack(">i", pur_file.xCanvas) + struct.pack(">i", pur_file.yCanvas)  # View X Y
 
     def write_images():
         nonlocal pur_bytes
