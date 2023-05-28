@@ -100,10 +100,18 @@ class PurFile:
     def count_text_items(self, offset):  # Text IDs start after image IDs (offset)
         # Count the amount of text transforms and assign their IDs
         count = 0
-        for text in self.text:
+
+        def count_children(text):
+            nonlocal count
+
             text.id = count + offset
-            count += 1
-        return count
+            for child in text.textChildren:
+                count_children(child)
+
+        for text in self.text:
+            count_children(text)
+
+        return len(self.text)  # the header only wants to know direct children
 
     # Import a .pur file into this object
     def read(self, file: str):
@@ -211,15 +219,60 @@ class PurFile:
             graphics_image_item = 34
             graphics_text_item = 32
 
-            last_item = None
-            last_item_children = 0
+            def unpack_graphics_text_item():
+
+                transform_end = unpack(">Q", 0, 8)  # End address of either image or text transform
+
+                text_transform = PurGraphicsTextItem()
+                erase(12 + unpack(">I", 8, 12))  # Remove textItem standard text
+
+                text_transform.text = unpack_string()  # Read the text
+
+                text_transform.matrix = unpack_matrix()  # Time for matrix for scaling & rotation
+                text_transform.x = unpack_erase(">d")  # Location
+                text_transform.y = unpack_erase(">d")
+
+                erase(8)  # text unknown permanent 1.0 float we don't want
+
+                text_transform.id = unpack_erase(">I")
+                text_transform.zLayer = unpack_erase(">d")  # Z layer
+
+                # Foreground color
+                is_hsv = unpack_erase('>b') == 2  # byte indicating RGB or HSV
+                text_transform.opacity = unpack_erase(">H")  # Opacity
+                text_transform.rgb = unpack_rgb()  # RGB
+                if is_hsv:
+                    text_transform.rgb = hsv_to_rgb(text_transform.rgb)
+
+                erase(2)  # Unknown 2 bytes
+
+                # Background color
+                is_background_hsv = unpack_erase(">b") == 2  # Byte indicating RGB or HSV, this is really stupid
+                text_transform.opacityBackground = unpack_erase(">H")  # BackgroundOpacity
+                text_transform.rgbBackground = unpack_rgb()  # BackgroundRGB
+                if is_background_hsv:
+                    text_transform.rgbBackground = hsv_to_rgb(text_transform.rgbBackground)
+
+                number_of_children = unpack(">I", 2, 6)
+
+                erase(transform_end - read_pin)
+
+                if number_of_children > 0:
+                    add_text_children(text_transform, number_of_children)
+
+                return text_transform
+
+            def add_text_children(parent, number_of_children):
+                for _ in range(number_of_children):
+                    text = unpack_graphics_text_item()
+                    parent.textChildren.append(text)
 
             # Read all GraphicsImageItems and GraphicsTextItems, they are in the order they were added
             while unpack(">I", 8, 12) == graphics_image_item or unpack(">I", 8, 12) == graphics_text_item:
 
-                transform_end = unpack(">Q", 0, 8)  # End address of either image or text transform
-
                 if unpack(">I", 8, 12) == graphics_image_item:
+
+                    transform_end = unpack(">Q", 0, 8)  # End address of either image or text transform
 
                     transform = PurGraphicsImageItem()
                     erase(12 + unpack(">I", 8, 12))  # Remove imageItem standard text
@@ -266,59 +319,18 @@ class PurFile:
                         transform.points[0].append(unpack_erase(">d"))
                         transform.points[1].append(unpack_erase(">d"))
 
-                    children = (unpack(">I", 21, 25))
-                    if children > 0:
-                        last_item = transform
-                        last_item_children = children
+                    number_of_children = (unpack(">I", 21, 25))
 
                     erase(transform_end - read_pin)  # Remove any bytes left in the transform
+
+                    add_text_children(transform, number_of_children)
+
                     image_items.append(transform)
 
                 elif unpack(">I", 8, 12) == graphics_text_item:
 
-                    text_transform = PurGraphicsTextItem()
-                    erase(12 + unpack(">I", 8, 12))  # Remove textItem standard text
-
-                    text_transform.text = unpack_string()  # Read the text
-
-                    text_transform.matrix = unpack_matrix()  # Time for matrix for scaling & rotation
-                    text_transform.x = unpack_erase(">d")  # Location
-                    text_transform.y = unpack_erase(">d")
-
-                    erase(8)  # text unknown permanent 1.0 float we don't want
-
-                    text_transform.id = unpack_erase(">I")
-                    text_transform.zLayer = unpack_erase(">d")  # Z layer
-
-                    # Foreground color
-                    is_hsv = unpack_erase('>b') == 2  # byte indicating RGB or HSV
-                    text_transform.opacity = unpack_erase(">H")  # Opacity
-                    text_transform.rgb = unpack_rgb()  # RGB
-                    if is_hsv:
-                        text_transform.rgb = hsv_to_rgb(text_transform.rgb)
-
-                    erase(2)  # Unknown 2 bytes
-
-                    # Background color
-                    is_background_hsv = unpack_erase(">b") == 2  # Byte indicating RGB or HSV, this is really stupid
-                    text_transform.opacityBackground = unpack_erase(">H")  # BackgroundOpacity
-                    text_transform.rgbBackground = unpack_rgb()  # BackgroundRGB
-                    if is_background_hsv:
-                        text_transform.rgbBackground = hsv_to_rgb(text_transform.rgbBackground)
-
-                    if last_item_children > 0:
-                        last_item_children -= 1
-                        last_item.textChildren.append(text_transform)
-                        erase(transform_end - read_pin)
-                        continue
-
-                    children = unpack(">I", 2, 6)
-                    if children > 0:
-                        last_item = text_transform
-                        last_item_children = children
-
-                    erase(transform_end - read_pin)
-                    self.text.append(text_transform)
+                    text = unpack_graphics_text_item()
+                    self.text.append(text)
 
                 else:
                     print("Error! Unknown item")  # Maybe more items will be added in the future
@@ -491,6 +503,15 @@ class PurFile:
             # Start of transform needs its own end address
             pur_bytes[transform_end:transform_end + 8] = struct.pack(">Q", len(pur_bytes))
 
+            # Write text children
+            write_text_children(text_transform)
+
+        def write_text_children(item):
+            nonlocal text_items
+            for text_child in item.textChildren:
+                write_text(text_child)
+                text_items += 1
+
         def write_image(transform):
             nonlocal pur_bytes
 
@@ -565,20 +586,11 @@ class PurFile:
                     write_image(transform)
 
                     # Write text children of image
-                    for textChild in transform.textChildren:
-                        textChild.id = text_items
-                        text_items += 1
-                        write_text(textChild)
+                    write_text_children(transform)
 
             # Time for unparented text
             for textTransform in self.text:
                 write_text(textTransform)
-
-                # Write text children
-                for textChild in textTransform.textChildren:
-                    textChild.id = text_items
-                    text_items += 1
-                    write_text(textChild)
 
         ################################################################################################################
         # Write the PureRef file
