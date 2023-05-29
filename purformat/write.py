@@ -1,12 +1,11 @@
 import struct
-from purformat.items import Item, PurGraphicsImageItem, PurGraphicsTextItem
+from purformat.items import PurGraphicsImageItem, PurGraphicsTextItem
 from purformat.purformat import PurFile
 
 
 def write_pur_file(pur_file: PurFile, filepath: str):
 
     pur_bytes = bytearray()
-    references = []
 
     def pack_add(typ: str, *args):
         nonlocal pur_bytes
@@ -65,26 +64,14 @@ def write_pur_file(pur_file: PurFile, filepath: str):
 
     def write_images():
         nonlocal pur_bytes
-        nonlocal references
 
         for image_add in pur_file.images:
             image_add.address[0] = len(pur_bytes)
             pur_bytes += image_add.pngBinary
             image_add.address[1] = len(pur_bytes)
-
-        # Create references including duplicates
-        for image_add in pur_file.images:
-            transform_num = 0
-            parent = object
-            for transform_add in image_add.transforms:
-                if transform_num == 0:
-                    parent = transform_add
-                    references.append([transform_add.id, image_add.address[0], image_add.address[1]])
-                else:
-                    references.append([transform_add.id, len(pur_bytes), len(pur_bytes) + 4])
-                    pack_add(">i", parent.id)
-
-                transform_num += 1
+            # go through all transforms and pack_add(">I", parent.id)) except the first one which is the parent
+            parent = image_add.transforms[0]
+            [pack_add(">I", parent.id) for _ in image_add.transforms[1:]]
 
     def write_text(text_transform: PurGraphicsTextItem):
         nonlocal pur_bytes
@@ -187,27 +174,31 @@ def write_pur_file(pur_file: PurFile, filepath: str):
         list(map(write_text, transform.textChildren))
 
     def write_items():
-        nonlocal references
 
         if len(pur_file.images) > 0:
-            # Sort all imagetransforms and references by the order in which they appear in memory
-            transforms_ordered = []
-            for image in pur_file.images:
-                for transform in image.transforms:
-                    transforms_ordered.append(transform)
-            # Sort images transforms by addresses too
-            references_zip = zip(references, transforms_ordered)
-            references_zip = sorted(references_zip, key=lambda x: x[0][1])
-            references, transforms_ordered = map(list, zip(*references_zip))
+            # list of all transforms from all images
+            transforms = [transform for image in pur_file.images for transform in image.transforms]
 
-            for transform in transforms_ordered:
-                write_image(transform)
-
-                # Write text children of image
+            list(map(write_image, transforms))
 
         # Time for unparented text
         for textTransform in pur_file.text:
             write_text(textTransform)
+
+    def write_references():
+        # Write references which couple image addresses to transform IDs
+        # for i, transform in enumerate(pur_file.transforms) for all images in pur_file.images:
+        for image in pur_file.images:
+            for i, transform in enumerate(image.transforms):
+                if i == 0:
+                    pack_add(">I", transform.id)
+                    pack_add(">Q", image.address[0])
+                    pack_add(">Q", image.address[1])
+                else:
+                    offset = (i - 1) * 4
+                    pack_add(">I", transform.id)
+                    pack_add(">Q", image.address[1] + offset)
+                    pack_add(">Q", image.address[1] + offset + 4)
 
     ################################################################################################################
     # Write the PureRef file
@@ -222,11 +213,7 @@ def write_pur_file(pur_file: PurFile, filepath: str):
     pack_add_string(pur_file.folderLocation)  # Length location
     pur_bytes[16:24] = struct.pack(">Q", len(pur_bytes))  # Update header file_length, which is where refs begin
 
-    # Write references which couple image addresses to transform IDs
-    for reference in references:
-        pack_add(">I", reference[0])
-        pack_add(">Q", reference[1])
-        pack_add(">Q", reference[2])
+    write_references()  # Write references
 
     with open(filepath, "wb") as f:
         f.write(pur_bytes)
