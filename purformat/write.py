@@ -7,7 +7,6 @@ def write_pur_file(pur_file: PurFile, filepath: str):
 
     pur_bytes = bytearray()
     references = []
-    text_items = 0
 
     def pack_add(typ: str, *args):
         nonlocal pur_bytes
@@ -33,7 +32,6 @@ def write_pur_file(pur_file: PurFile, filepath: str):
 
     def write_header():
         nonlocal pur_bytes
-        nonlocal text_items
         pur_bytes = bytearray(b'\x00') * 224  # 224 empty bytes to fill the header with
         pur_bytes[0:4] = struct.pack(">I", 8)  # Needed to recognize the file as a PureRef file
         pur_bytes[4:12] = "1.10".encode("utf-16-be")  # Version, 1.11.1 still uses 1.10 format
@@ -90,7 +88,6 @@ def write_pur_file(pur_file: PurFile, filepath: str):
 
     def write_text(text_transform: PurGraphicsTextItem):
         nonlocal pur_bytes
-        nonlocal text_items
         transform_end = len(pur_bytes)
         pur_bytes += struct.pack(">Q", 0)
 
@@ -129,13 +126,7 @@ def write_pur_file(pur_file: PurFile, filepath: str):
         pur_bytes[transform_end:transform_end + 8] = struct.pack(">Q", len(pur_bytes))
 
         # Write text children
-        write_text_children(text_transform)
-
-    def write_text_children(item: Item):
-        nonlocal text_items
-        for text_child in item.textChildren:
-            write_text(text_child)
-            text_items += 1
+        list(map(write_text, text_transform.textChildren))
 
     def write_image(transform: PurGraphicsImageItem):
         nonlocal pur_bytes
@@ -192,9 +183,11 @@ def write_pur_file(pur_file: PurFile, filepath: str):
         # Start of transform needs its own end address
         pur_bytes[transform_end:transform_end + 8] = struct.pack(">Q", len(pur_bytes))
 
+        # Write text children
+        list(map(write_text, transform.textChildren))
+
     def write_items():
         nonlocal references
-        nonlocal text_items
 
         if len(pur_file.images) > 0:
             # Sort all imagetransforms and references by the order in which they appear in memory
@@ -211,7 +204,6 @@ def write_pur_file(pur_file: PurFile, filepath: str):
                 write_image(transform)
 
                 # Write text children of image
-                write_text_children(transform)
 
         # Time for unparented text
         for textTransform in pur_file.text:

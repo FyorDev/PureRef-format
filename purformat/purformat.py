@@ -50,8 +50,8 @@ class PurFile:
 
             text_item.id = count + id_offset
             count += 1
-            map(count_children, text_item.textChildren)
+            list(map(count_children, text_item.textChildren))
 
-        map(count_children, self.text)
+        list(map(count_children, self.text))
 
         return len(self.text)  # the header only wants to know direct children
