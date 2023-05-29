@@ -1,6 +1,7 @@
 import struct
 from purformat.items import PurGraphicsImageItem, PurGraphicsTextItem
 from purformat.purformat import PurFile
+import hashlib
 
 
 def write_pur_file(pur_file: PurFile, filepath: str):
@@ -207,6 +208,10 @@ def write_pur_file(pur_file: PurFile, filepath: str):
     pur_bytes[16:24] = struct.pack(">Q", len(pur_bytes))  # Update header file_length, which is where refs begin
 
     write_references()  # Write references
+
+    # this is the checksum, it's crazy that I figured this out
+    # on bytes 2C to 6C write Md5 hash of the rest of the file
+    pur_bytes[44:108] = hashlib.md5(pur_bytes[108:]).hexdigest().encode("utf-16-be")
 
     with open(filepath, "wb") as f:
         f.write(pur_bytes)
