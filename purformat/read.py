@@ -3,12 +3,14 @@ import colorsys
 from purformat.items import Item, PurImage, PurGraphicsImageItem, PurGraphicsTextItem
 from purformat.purformat import PurFile
 
+graphics_image_item = 34
+graphics_text_item = 32
+
 
 def read_pur_file(pur_file: PurFile, filepath: str):
 
     pur_bytes = bytearray(open(filepath, "rb").read())
     read_pin = 0
-    total_image_items = 0
     image_items: list[PurGraphicsImageItem] = []
 
     def erase(length):  # Remove n bytes from bytearray
@@ -52,8 +54,7 @@ def read_pur_file(pur_file: PurFile, filepath: str):
 
     def read_header():
         # total_text_items = unpack('>H', 12, 14) - unpack('>H', 14, 16)
-        nonlocal total_image_items
-        total_image_items = unpack('>H', 14, 16)
+        # total_image_items = unpack('>H', 14, 16)
         # file_length = unpack('>Q', 16, 24])
 
         # Canvas width and height
@@ -98,7 +99,7 @@ def read_pur_file(pur_file: PurFile, filepath: str):
         # (duplicates = totalImageItems - images.count)
         # pngBinary here is not an actual PNG but the 4 byte ID of the transform that does have the PNG
         # after transforms are put in their images by address we can merge the duplicates
-        for _ in range(total_image_items - len(pur_file.images)):
+        while not(unpack(">I", 8, 12) == graphics_image_item or unpack(">I", 8, 12) == graphics_text_item):
             image_add = PurImage()
             image_add.address = [read_pin, 4 + read_pin]
             image_add.pngBinary = pur_bytes[0: 4]
@@ -107,9 +108,6 @@ def read_pur_file(pur_file: PurFile, filepath: str):
             erase(4)
 
     def read_items():
-        graphics_image_item = 34
-        graphics_text_item = 32
-
         def unpack_graphics_text_item():
 
             transform_end = unpack(">Q", 0, 8)  # End address of either image or text transform
@@ -245,7 +243,7 @@ def read_pur_file(pur_file: PurFile, filepath: str):
 
     # From now on the rest of the file is just a list coupling transform IDs (GraphicsImageItem)
     # with the address of the image (PurImage) it uses. Duplicate images are included and are removed later.
-    for _ in range(total_image_items):  # Put transforms in their image
+    for _ in range(len(image_items)):
         red_id = unpack(">I", 0, 4)
         ref_address = [unpack(">Q", 4, 12), unpack(">Q", 12, 20)]
         for item in image_items:

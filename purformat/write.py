@@ -1,17 +1,15 @@
 import struct
-from purformat.items import Item, PurGraphicsImageItem, PurGraphicsTextItem
+from purformat.items import PurGraphicsImageItem, PurGraphicsTextItem
 from purformat.purformat import PurFile
+import hashlib
 
 
 def write_pur_file(pur_file: PurFile, filepath: str):
 
     pur_bytes = bytearray()
-    references = []
-    text_items = 0
 
     def pack_add(typ: str, *args):
-        nonlocal pur_bytes
-        pur_bytes += struct.pack(typ, *args)
+        pur_bytes.extend(struct.pack(typ, *args))
 
     def pack_add_matrix(matrix: []):
         pack_add(">d", matrix[0])
@@ -22,19 +20,15 @@ def write_pur_file(pur_file: PurFile, filepath: str):
         pack_add(">d", 0.0)
 
     def pack_add_rgb(rgb: []):
-        nonlocal pur_bytes
         for value in rgb:
-            pur_bytes += struct.pack(">H", value)
+            pur_bytes.extend(struct.pack(">H", value))
 
     def pack_add_string(string: str):
-        nonlocal pur_bytes
         pack_add(">I", len(string.encode("utf-16-be")))
-        pur_bytes += string.encode("utf-16-be")
+        pur_bytes.extend(string.encode("utf-16-be"))
 
     def write_header():
-        nonlocal pur_bytes
-        nonlocal text_items
-        pur_bytes = bytearray(b'\x00') * 224  # 224 empty bytes to fill the header with
+        pur_bytes[:] = bytearray(b'\x00') * 224  # 224 empty bytes to fill the header with
         pur_bytes[0:4] = struct.pack(">I", 8)  # Needed to recognize the file as a PureRef file
         pur_bytes[4:12] = "1.10".encode("utf-16-be")  # Version, 1.11.1 still uses 1.10 format
 
@@ -66,37 +60,22 @@ def write_pur_file(pur_file: PurFile, filepath: str):
         pur_bytes[216:224] = struct.pack(">i", pur_file.xCanvas) + struct.pack(">i", pur_file.yCanvas)  # View X Y
 
     def write_images():
-        nonlocal pur_bytes
-        nonlocal references
 
         for image_add in pur_file.images:
             image_add.address[0] = len(pur_bytes)
-            pur_bytes += image_add.pngBinary
+            pur_bytes.extend(image_add.pngBinary)
             image_add.address[1] = len(pur_bytes)
-
-        # Create references including duplicates
-        for image_add in pur_file.images:
-            transform_num = 0
-            parent = object
-            for transform_add in image_add.transforms:
-                if transform_num == 0:
-                    parent = transform_add
-                    references.append([transform_add.id, image_add.address[0], image_add.address[1]])
-                else:
-                    references.append([transform_add.id, len(pur_bytes), len(pur_bytes) + 4])
-                    pack_add(">i", parent.id)
-
-                transform_num += 1
+            # go through all transforms and pack_add(">I", parent.id)) except the first one which is the parent
+            parent = image_add.transforms[0]
+            [pack_add(">I", parent.id) for _ in image_add.transforms[1:]]
 
     def write_text(text_transform: PurGraphicsTextItem):
-        nonlocal pur_bytes
-        nonlocal text_items
         transform_end = len(pur_bytes)
-        pur_bytes += struct.pack(">Q", 0)
+        pur_bytes.extend(struct.pack(">Q", 0))
 
         pur_bytes[transform_end:transform_end + 8] = struct.pack(">Q", len(pur_bytes))
         pack_add(">I", 32)
-        pur_bytes += "GraphicsTextItem".encode("utf-16-be")
+        pur_bytes.extend("GraphicsTextItem".encode("utf-16-be"))
 
         pack_add_string(text_transform.text)  # The text
 
@@ -129,16 +108,9 @@ def write_pur_file(pur_file: PurFile, filepath: str):
         pur_bytes[transform_end:transform_end + 8] = struct.pack(">Q", len(pur_bytes))
 
         # Write text children
-        write_text_children(text_transform)
-
-    def write_text_children(item: Item):
-        nonlocal text_items
-        for text_child in item.textChildren:
-            write_text(text_child)
-            text_items += 1
+        list(map(write_text, text_transform.textChildren))
 
     def write_image(transform: PurGraphicsImageItem):
-        nonlocal pur_bytes
 
         # transform_end prints current writePin for now to replace later
         transform_end = len(pur_bytes)
@@ -146,7 +118,7 @@ def write_pur_file(pur_file: PurFile, filepath: str):
         # Purimageitem text
         brute_force_loaded = transform.source == "BruteForceLoaded"
         pack_add(">I", 34)
-        pur_bytes += "GraphicsImageItem".encode("utf-16-be")
+        pur_bytes.extend("GraphicsImageItem".encode("utf-16-be"))
         # Is bruteforceloaded there is an extra empty 8 byte
         if brute_force_loaded:
             pack_add(">I", 0)
@@ -192,30 +164,35 @@ def write_pur_file(pur_file: PurFile, filepath: str):
         # Start of transform needs its own end address
         pur_bytes[transform_end:transform_end + 8] = struct.pack(">Q", len(pur_bytes))
 
+        # Write text children
+        list(map(write_text, transform.textChildren))
+
     def write_items():
-        nonlocal references
-        nonlocal text_items
 
         if len(pur_file.images) > 0:
-            # Sort all imagetransforms and references by the order in which they appear in memory
-            transforms_ordered = []
-            for image in pur_file.images:
-                for transform in image.transforms:
-                    transforms_ordered.append(transform)
-            # Sort images transforms by addresses too
-            references_zip = zip(references, transforms_ordered)
-            references_zip = sorted(references_zip, key=lambda x: x[0][1])
-            references, transforms_ordered = map(list, zip(*references_zip))
+            # list of all transforms from all images
+            transforms = [transform for image in pur_file.images for transform in image.transforms]
 
-            for transform in transforms_ordered:
-                write_image(transform)
-
-                # Write text children of image
-                write_text_children(transform)
+            list(map(write_image, transforms))
 
         # Time for unparented text
         for textTransform in pur_file.text:
             write_text(textTransform)
+
+    def write_references():
+        # Write references which couple image addresses to transform IDs
+        # for i, transform in enumerate(pur_file.transforms) for all images in pur_file.images:
+        for image in pur_file.images:
+            for i, transform in enumerate(image.transforms):
+                if i == 0:
+                    pack_add(">I", transform.id)
+                    pack_add(">Q", image.address[0])
+                    pack_add(">Q", image.address[1])
+                else:
+                    offset = (i - 1) * 4
+                    pack_add(">I", transform.id)
+                    pack_add(">Q", image.address[1] + offset)
+                    pack_add(">Q", image.address[1] + offset + 4)
 
     ################################################################################################################
     # Write the PureRef file
@@ -230,11 +207,11 @@ def write_pur_file(pur_file: PurFile, filepath: str):
     pack_add_string(pur_file.folderLocation)  # Length location
     pur_bytes[16:24] = struct.pack(">Q", len(pur_bytes))  # Update header file_length, which is where refs begin
 
-    # Write references which couple image addresses to transform IDs
-    for reference in references:
-        pack_add(">I", reference[0])
-        pack_add(">Q", reference[1])
-        pack_add(">Q", reference[2])
+    write_references()  # Write references
+
+    # this is the checksum, it's crazy that I figured this out
+    # on bytes 2C to 6C write Md5 hash of the rest of the file
+    pur_bytes[44:108] = hashlib.md5(pur_bytes[108:]).hexdigest().encode("utf-16-be")
 
     with open(filepath, "wb") as f:
         f.write(pur_bytes)
