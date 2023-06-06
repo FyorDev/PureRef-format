@@ -1,6 +1,6 @@
 from typing import List
 import os
-from purformat.items import PurImage, PurGraphicsTextItem
+from .items import PurImage, PurGraphicsTextItem
 
 ########################################################################################################################
 # The class this whole project is about

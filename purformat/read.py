@@ -1,7 +1,7 @@
 import struct
 import colorsys
-from purformat.items import Item, PurImage, PurGraphicsImageItem, PurGraphicsTextItem
-from purformat.purformat import PurFile
+from .items import Item, PurImage, PurGraphicsImageItem, PurGraphicsTextItem
+from .purformat import PurFile
 
 graphics_image_item = 34
 graphics_text_item = 32
