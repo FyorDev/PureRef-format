@@ -1,6 +1,6 @@
 import struct
-from purformat.items import PurGraphicsImageItem, PurGraphicsTextItem
-from purformat.purformat import PurFile
+from .items import PurGraphicsImageItem, PurGraphicsTextItem
+from .purformat import PurFile
 import hashlib
 
 
