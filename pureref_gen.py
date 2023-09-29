@@ -60,27 +60,30 @@ def generate(read_folder, write_file):
     transforms = [transform for image in pur_file.images for transform in image.transforms]
 
     for transform in transforms:  # normalize all images to height 1000
-        transform.matrix = [1000/(2*transform.points[1][2]), 0.0, 0.0, 1000/(2*transform.points[1][2])]
+        transform.matrix = [1000/(2*transform.points[1][2]), 0.0, 0.0, 1000/(2*transform.points[1][2])]  # TODO: extract to items.py
 
-    total_width = sum([transform.matrix[0]*2*transform.points[0][2] for transform in transforms])
+    total_width = sum([transform.matrix[0]*2*transform.points[0][2] for transform in transforms])  # TODO: extract to items.py
 
     # Divide into rows by cutting in half until it is rectangular enough
     rows = [transforms]  # Initially one row, list of rows with so far only one list of transforms.
+    # TODO: alternative rectangle algorithm, extract to function with ratio arguments
     while len(rows)*2000.0 < total_width:  # while more wide than tall, eventually making a decent rectangle
-        total_width = total_width/2.0
+        total_width /= 2.0
         new_rows = []
+
         for row in rows:
             row_length = total_width
-            new_row = []
-            new_row_second = []
-            for transform in row:
-                if row_length > 0:
-                    row_length -= transform.matrix[0]*transform.points[0][2]*2
-                    new_row.append(transform)
-                else:
-                    new_row_second.append(transform)
-            new_rows.append(new_row)
-            new_rows.append(new_row_second)
+
+            # get the index of the middle transform by summing widths until it exceeds half of the total width
+            middle_index = 0
+            while row_length > 0:
+                row_length -= row[middle_index].matrix[0]*row[middle_index].points[0][2]*2  # TODO: extract to items.py
+                middle_index += 1
+
+            # split the row in half
+            new_rows.append(row[:middle_index])
+            new_rows.append(row[middle_index:])
+
         rows = new_rows
 
     # Normalize row widths and actually place images, this makes everything line up perfectly.
