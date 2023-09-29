@@ -13,48 +13,48 @@ from io import BytesIO
 
 def generate(read_folder, write_file):
 
-    # Initialize an empty .pur file which will hold objects for images with transforms(1, n), and text
-    pur_file = purformat.PurFile()
-
     # Natural sort https://stackoverflow.com/a/341745
     # For example: 0.jpg, 2.jpg, 10.jpg, 100.jpg
     # Instead of: 0.jpg, 10.jpg, 100.jpg, 2.jpg
     def natural_keys(text):
         return [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', text)]
 
-    # All images in read_folder will be added to pur_file
-    # The images will be sorted using natural sort
-    # So you can number them to control the order
-    files = sorted(os.listdir(read_folder), key=natural_keys)
-    if len(files) == 0:
-        print("Skipping, no images found in " + read_folder)
-        return
+    def process_image(path):
+        if not (path.endswith(".jpg") or path.endswith(".jpeg") or path.endswith(".png")):
+            print("Skipping processing, not a valid image: " + path)
+            return None
 
-    for file in files:
-        if not (file.endswith(".jpg") or file.endswith(".jpeg") or file.endswith(".png")):
-            continue
+        print("Processing: " + path)
 
-        print(file)
-        image = Image.open(read_folder + "/" + file)
-        image = image.convert(mode="RGB")
+        image = Image.open(path).convert(mode="RGB")
+        pur_image = items.PurImage()
+
         with BytesIO() as f:
             image.save(f, format="PNG", compress_level=7)  # TODO: research why PureRef saves PNG differently sometimes
-            png_bin = f.getvalue()  # convert to bytes
-
-        pur_image = items.PurImage()
-        # PurImage doesn't save PIL images but raw PNG data because sometimes the binary data is actually a reference to
-        # the transform of another image, in which case it is a duplicate.
-        # So it's not always a PNG, and this is the easiest way to handle it. Might be worth changing one day.
-        pur_image.pngBinary = png_bin  # save the image as PNG binary
+            pur_image.pngBinary = f.getvalue()
+            # bytes are used instead of PIL because the pngBinary can also be a reference to another image's transform
+            # (duplicate images) this is the easiest way to handle it TODO: make PurFile work with PIL images
 
         pur_transform = items.PurGraphicsImageItem()
         pur_transform.reset_crop(image.width, image.height)
-        pur_transform.name = file.replace(".jpg", "")
-        pur_transform.source = read_folder + "/" + file
-        pur_image.transforms = [pur_transform]  # The first transform is the original one, the rest are duplicates
-        # If this is somehow messed up, it doesn't matter. Another transform will be made the "original" one.
+        pur_transform.name = path.replace(".jpg", "")
+        pur_transform.source = path
+        pur_image.transforms = [pur_transform]  # the first transform is the original, rest are duplicates
 
-        pur_file.images.append(pur_image)
+        return pur_image
+
+    # Initialize an empty .pur file which will hold objects for images with transforms(1, n), and text
+    pur_file = purformat.PurFile()
+
+    # Add all images in read_folder to pur_file
+    # The images will be sorted using natural sort, number them to control order
+    files = sorted(os.listdir(read_folder), key=natural_keys)
+    pur_file.images = [process_image(os.path.join(read_folder, file)) for file in files]
+    pur_file.images = [image for image in pur_file.images if image is not None]  # remove None values
+
+    if not pur_file.images:
+        print("Skipping, no valid images found in " + read_folder)
+        return
 
     # Normalize Y scale to 1000
     total_width = 0  # Used to divide into rows
