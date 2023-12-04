@@ -48,10 +48,40 @@ class PurGraphicsImageItem(Item):
             [[-1000, 1000, 1000, -1000, -1000],
              [-1000, -1000, 1000, 1000, -1000]]  # 4 byte 01 and 2 doubles
 
+    @property
+    def width(self):
+        return (self.points[0][2] - self.points[0][0]) * self.matrix[0]
+
+    @width.setter
+    def width(self, value):
+        self.matrix[0] = value / (self.points[0][2] - self.points[0][0])
+
+    @property
+    def height(self):
+        return (self.points[1][2] - self.points[1][0]) * self.matrix[3]
+
+    @height.setter
+    def height(self, value):
+        self.matrix[3] = value / (self.points[1][2] - self.points[1][0])
+
+    def scale(self, factor):
+        self.matrix[0] *= factor
+        self.matrix[3] *= factor
+
+    def scale_to_width(self, width):
+        ratio = self.height / self.width
+        self.width = width
+        self.height = width * ratio
+
+    def scale_to_height(self, height):
+        ratio = self.width / self.height
+        self.width = height * ratio
+        self.height = height
+
     def reset_crop(self, width, height):
-        self.xCrop, self.yCrop = -float(width/2), -float(height/2)
         w = width/2
         h = height/2
+        self.xCrop, self.yCrop = -float(w), -float(h)
         self.points = \
             [[-w, w, w, -w, -w],
              [-h, -h, h, h, -h]]
