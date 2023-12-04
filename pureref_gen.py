@@ -59,10 +59,9 @@ def generate(read_folder, write_file):
     # Start transforming images to automatically order
     transforms = [transform for image in pur_file.images for transform in image.transforms]
 
-    for transform in transforms:  # normalize all images to height 1000
-        transform.matrix = [1000/(2*transform.points[1][2]), 0.0, 0.0, 1000/(2*transform.points[1][2])]  # TODO: extract to items.py
+    [transform.scale_to_height(1000) for transform in transforms]  # normalize all images to height 1000
 
-    total_width = sum([transform.matrix[0]*2*transform.points[0][2] for transform in transforms])  # TODO: extract to items.py
+    total_width = sum([transform.width for transform in transforms])
 
     # Divide into rows by cutting in half until it is rectangular enough
     rows = [transforms]  # Initially one row, list of rows with so far only one list of transforms.
@@ -77,7 +76,7 @@ def generate(read_folder, write_file):
             # get the index of the middle transform by summing widths until it exceeds half of the total width
             middle_index = 0
             while row_length > 0:
-                row_length -= row[middle_index].matrix[0]*row[middle_index].points[0][2]*2  # TODO: extract to items.py
+                row_length -= row[middle_index].width
                 middle_index += 1
 
             # split the row in half
@@ -91,17 +90,16 @@ def generate(read_folder, write_file):
 
     # if not empty
     for row in [row for row in rows if row]:  # deals with empty rows
-        row_width = sum([transform.matrix[0]*transform.points[0][2]*2 for transform in row])
+        row_width = sum([transform.width for transform in row])
         scale_factor = 1000/row_width  # the entire row is normalized to 1000 width
 
         placement_x = 0
         for transform in row:
-            transform.matrix[0] *= scale_factor
-            transform.matrix[3] *= scale_factor
+            transform.scale(scale_factor)
 
-            transform.x = placement_x + transform.matrix[0]*transform.points[0][2]
-            placement_x += transform.matrix[0]*transform.points[0][2]*2
-            transform.y = placement_y + transform.matrix[0]*transform.points[1][2]
+            transform.x = placement_x + transform.width / 2
+            placement_x += transform.width
+            transform.y = placement_y + transform.height / 2
 
         placement_y += 1000 * scale_factor  # images are 1000 height and scaled to row width
 
