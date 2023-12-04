@@ -87,22 +87,23 @@ def generate(read_folder, write_file):
         rows = new_rows
 
     # Normalize row widths and actually place images, this makes everything line up perfectly.
-    transform_y_old = 0
-    transform_y = 0
-    for row in rows:
-        row_width = 1  # 1 to avoid division by zero
+    placement_y = 0
+
+    # if not empty
+    for row in [row for row in rows if row]:  # deals with empty rows
+        row_width = sum([transform.matrix[0]*transform.points[0][2]*2 for transform in row])
+        scale_factor = 1000/row_width  # the entire row is normalized to 1000 width
+
+        placement_x = 0
         for transform in row:
-            row_width += transform.matrix[0]*transform.points[0][2]*2
-        for transform in row:
-            transform.matrix[0] *= 20000/row_width
-            transform.matrix[3] *= 20000/row_width
-        transform_y += 1000 * 20000/row_width
-        row_width = 1  # 1 to avoid division by zero
-        for transform in row:
-            transform.x = row_width + transform.matrix[0]*transform.points[0][2]
-            row_width += transform.matrix[0]*transform.points[0][2]*2
-            transform.y = transform_y_old + transform.matrix[0]*transform.points[1][2]
-        transform_y_old = transform_y
+            transform.matrix[0] *= scale_factor
+            transform.matrix[3] *= scale_factor
+
+            transform.x = placement_x + transform.matrix[0]*transform.points[0][2]
+            placement_x += transform.matrix[0]*transform.points[0][2]*2
+            transform.y = placement_y + transform.matrix[0]*transform.points[1][2]
+
+        placement_y += 1000 * scale_factor  # images are 1000 height and scaled to row width
 
     pur_file.write(write_file)
     print("Done! File created")
