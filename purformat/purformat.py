@@ -24,12 +24,12 @@ class PurFile:
 
     # Import a .pur file into this object
     def read(self, file: str):
-        from purformat.read import read_pur_file
+        from .read import read_pur_file
         read_pur_file(self, file)
 
     # Export this object to a .pur file
     def write(self, file: str):
-        from purformat.write import write_pur_file
+        from .write import write_pur_file
         write_pur_file(self, file)
 
     def count_image_items(self):

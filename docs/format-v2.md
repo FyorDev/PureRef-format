@@ -1,0 +1,196 @@
+# The PureRef 2.0 / 2.1 `.pur` format
+
+Implemented in `pureref/v2`, verified against **PureRef 2.0.3 on Linux** and
+against files written by **2.1.3 on Windows**. The envelope version is a format
+version, not an application version: 2.0.3 writes `2.1` envelopes, and 2.0.3
+accepts `2.0`, `2.1` and `2.2` while refusing `3.0` as "from a newer version".
+
+An independent specification of the same format, written from 2.1.3, is
+[Vacyyyy/pur-2-file-format](https://github.com/Vacyyyy/pur-2-file-format); its
+`FORMAT.md` and the notes in this repository's research log cover the same ground
+from two directions. This implementation is written from the format, not from
+that project's code.
+
+## Container: a SQLite database with a displaced prefix
+
+A `.pur` is an ordinary SQLite database whose first `H` bytes were replaced by a
+PureRef header and moved to the end:
+
+```text
+offset 0   header               H bytes
+offset H   database[H:N]        N - H bytes
+offset N   database[0:H]        H bytes
+```
+
+so `database = file[N:] + file[H:N]`. Carving from the `SQLite format 3`
+signature to the end of the file recovers only the displaced prefix.
+
+## Header
+
+| Field | Encoding | 2.0 | 2.1 |
+|---|---|:-:|:-:|
+| format version | QString (`2.0` / `2.1`) | ● | ● |
+| reserved | uint32, `0` | ● | ● |
+| N, the database length | uint64 | ● | ● |
+| application version | QString (`2.0.3`, `2.1.3`) | ● | ● |
+| checksum | QString, 32 lowercase MD5 hex digits | ● | ● |
+| thumbnail | QByteArray, JPEG or PNG | — | ● |
+
+The **`2.0` layout has no thumbnail field**: its header ends at the checksum.
+Adding an empty thumbnail array to a `2.0` header makes PureRef fail with
+`Open failed … no such table: metadata`, because the database is then
+reconstructed four bytes out of step.
+
+The checksum is `md5(file[end_of_checksum_field:])`, so it covers the thumbnail,
+the database body and the displaced prefix — not the reconstructed database. A
+wrong checksum is a warning, not an error: PureRef still opens the file.
+
+Previews are 256×256 RGB JPEG renders of the canvas in PureRef's own saves, and
+the same bytes appear in `metadata.thumbnail`. A PNG preview is accepted too, so
+`pureref` can supply one without a JPEG encoder.
+
+## Database
+
+```sql
+PRAGMA page_size = 4096;
+PRAGMA auto_vacuum = 1;          -- FULL
+PRAGMA application_id = 940753918;
+PRAGMA user_version = 200101;
+PRAGMA encoding = 'UTF-8';
+```
+
+`user_version` is the compatibility gate. A lower value is migrated silently and
+re-saved as `200101`; a higher one makes PureRef refuse the file, quoting
+`metadata.application_version` in the message. Do not advertise a version of
+PureRef that does not exist yet.
+
+PureRef reads its schema by column *name* (`PRAGMA table_info`,
+`ALTER TABLE … ADD COLUMN`), which means:
+
+* **column order is free** — 2.0.3 and 2.1.3 declare the same columns in
+  different orders and open each other's files;
+* **extra columns and tables** load with a warning and are dropped on the next
+  save, so `pureref` exposes them on read and does not write them back;
+* **missing columns are fatal** — a database without `metadata.saved` fails to
+  load — so `pureref/v2/schema.py` writes the full column set, and
+  `schema.missing_columns` is what `pureref pack` checks before wrapping a
+  database somebody edited by hand.
+
+| Table | Holds |
+|---|---|
+| `images` | image resources: bytes, format, size, checksum, source path |
+| `items` | every object: parent, transform, order, z, opacity, lock, name |
+| `items_images` | image instances: which resource, crop outline, flags, playback |
+| `items_notes` | note HTML, colors, fixed size, style |
+| `items_groups` | group background and lock mode |
+| `items_drawings` | stroke lists |
+| `metadata` | view, preview, application version, save bookkeeping |
+
+An item's kind comes from which subtype table holds its id. `items.parent` is
+`-1` for a root. `items.z` and `items.sort_order` are renumbered to `1..n` per
+parent on every save PureRef does, so small integers are all a writer needs.
+
+## Serialized cells
+
+`transform`, `sort_order`, `image_transform`, `image_bounds`, `fixed_size`,
+`scene_rect`, `view_transform` and `strokes` are declared `BLOB` but stored with
+storage class **TEXT**: each payload byte was mapped to the code point of the
+same value, so `value.encode('latin1')` recovers the bytes. Image data and
+thumbnails are real BLOBs; names, paths, HTML and color strings are ordinary
+text.
+
+Each payload is a QDataStream QVariant: `uint32 type_id`, `uint8 is_null`, then
+for `type_id 1024` a NUL-terminated registered type name, then the value.
+
+| Type | Payload |
+|---|---|
+| 20 `QRectF` | doubles x, y, width, height |
+| 22 `QSizeF` | doubles width, height; `(-1,-1)` means automatic |
+| 80 `QTransform` | nine doubles `m11 m12 m13 m21 m22 m23 m31 m32 m33` |
+| 1024 `QPainterPath` | element count, then `int32 kind, double x, double y` each, then subpath index and fill rule |
+| 1024 `BigRational` | two big integers: numerator then denominator |
+| 1024 `QList<GraphicsDrawItem::Stroke>` | stroke count, then the strokes below |
+
+`QPainterPath` element kinds: 0 move-to, 1 line-to, 2 first cubic control point,
+3 cubic continuation (two of them per curve).
+
+### BigRational
+
+Each of the two integers is:
+
+```text
+uint32 sign           1 positive, 0 zero, 0xffffffff negative
+uint64 block count
+uint32 blocks[]       least significant block first
+```
+
+Verified by ordering: six images given the orders `-3`, `0`, `3`, `7/2`, `5` and
+`2³²` were exported by PureRef in exactly that ascending sequence.
+
+### Strokes
+
+```text
+uint8  100                     -- per-stroke serialization marker
+uint8  1                       -- QColor RGB
+uint16 alpha, red, green, blue, 0
+double width
+QPainterPath                   -- no QVariant wrapper here
+byte   options[20]             -- options[19] is the dash flag
+```
+
+Channels are `value * 257` of an 8-bit channel. `options[19] = 1` draws a dashed
+stroke — PureRef re-serializes exactly that after loading one. The other 19
+bytes have no observed effect and are carried through unchanged. Markers other
+than 100 fail to deserialize in 2.0.3, which is why the reader rejects them.
+
+## Images and instances
+
+`images.source_type` is `1` for embedded data and `2` for a linked file
+(`data` and `checksum` NULL, path in `source` and `origin`). PureRef
+deduplicates embedded resources by checksum and linked ones by path, and it
+searches the `.pur`'s own folder and subfolders when a linked file has moved.
+`format` is not normalized: it is the lowercase file extension when the image
+came from a path and the uppercase detected format otherwise.
+
+An instance's `image_transform` maps image pixels into item coordinates and
+translates by `(-width/2, -height/2)`, so **an image item's position is its
+center**. `image_bounds` is the visible outline in those centered pixel
+coordinates: a closed five-point rectangle unless cropped. For a crop
+`(left, top, width, height)` in source pixels:
+
+```text
+x0 = left - width/2        x1 = x0 + crop width
+y0 = top  - height/2       y1 = y0 + crop height
+```
+
+`flags` is a render-flag bitmask: `0x1` bilinear sampling (PureRef's default;
+`0` renders nearest-neighbour), `0x2` the grayscale filter. Higher bits have no
+observed effect and survive a re-save.
+
+`playback_state` is `0` for stills, `2` paused at `playback_frame` — the only
+state where that frame is rendered — and `3` playing, which is what PureRef
+writes for an animated GIF.
+
+## Notes, groups, drawings
+
+`items_notes.text` is Qt rich text. `text_color` is the default color, used when
+the HTML carries none and overridden by an inline color. `background_color`
+takes `#AARRGGBB` with the alpha honored, or `''` for the default. `style` is
+`0` Comfortable or `1` Compact.
+
+`items_groups` holds only a background color and `lock_mode`: `0` open, `1`
+closed, which is PureRef's default and makes a click select the group instead of
+the child. Group geometry comes from the children.
+
+`items_drawings.strokes` is the stroke list above; the item's transform places
+it, and the paths are in item coordinates.
+
+## Metadata
+
+One row with `id = 0`. `scene_rect` is the canvas rectangle PureRef frames on
+open; leaving it NULL makes PureRef compute the framing, which is what `pureref`
+does for scenes that did not come from a 2.x file — a 1.x canvas is a scrollable
+area, not a content rectangle. `view_transform` carries the zoom,
+`horizontal_scroll` and `vertical_scroll` the pan. `saved`, `last_save_path`,
+`last_load_path` and `last_load_checksum` are PureRef's own bookkeeping and are
+filled in again on its next save.

@@ -1,0 +1,181 @@
+"""Load the files this package writes in the real PureRef and check them.
+
+    PUREREF_EXE=/usr/bin/PureRef DISPLAY=:0 python -m tests.integration_app
+
+Everything runs against a throwaway settings file in a fresh temporary folder, so
+the machine's PureRef configuration and open canvases are untouched. Only
+synthetic images from `tests/fixtures` are used.
+
+PureRef needs a display: the Linux AppImage ships no `offscreen` Qt plugin, so on
+Linux this has to run on an X display.
+"""
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+import pureref
+from pureref import (LOCK_OPEN, PLAYBACK_PAUSED, RENDER_GRAYSCALE, RENDER_SMOOTH,
+                     CropPath, Scene, Stroke)
+
+FIXTURES = Path(__file__).resolve().parent / 'fixtures'
+WINDOWS_DEFAULT = r'C:\Program Files\PureRef\PureRef.exe'
+# Noise that says nothing about the file under test.
+BENIGN = ('QFontDatabase: Cannot find font directory', 'Note that Qt no longer ships fonts',
+          'Ignoring WAYLAND_DISPLAY')
+
+
+def executable() -> str:
+    return os.environ.get('PUREREF_EXE') or shutil.which('PureRef') or WINDOWS_DEFAULT
+
+
+class Session:
+    """One temporary workspace plus the PureRef command line."""
+
+    def __init__(self, directory: Path):
+        self.directory = directory
+        self.settings = directory / 'settings.ini'
+        self.results: dict = {}
+
+    def run(self, *commands: str, timeout: int = 120) -> str:
+        arguments = [executable(), '-s', str(self.settings)]
+        for command in commands:
+            arguments += ['-c', command]
+        finished = subprocess.run(arguments, capture_output=True, timeout=timeout)
+        return (finished.stdout + finished.stderr).decode(errors='replace')
+
+    def open(self, name: str, path: Path, *, width: int = 700, height: int = 400):
+        """Load a file, export a render and save it again; return both paths."""
+        render = self.directory / f'{name}.png'
+        resaved = self.directory / f'{name}-resaved.pur'
+        resaved.touch()  # the 2.x CLI only saves to a destination that exists
+        log = self.run(f'load;{path}', f'exportScene;{render};{width};{height};true;false',
+                       f'save;{resaved}', 'exit')
+        (self.directory / f'{name}.log').write_text(log)
+        problems = diagnostics(log)
+        assert not problems, f'{name}: PureRef complained:\n{problems}'
+        assert render.exists() and render.stat().st_size > 0, f'{name}: nothing rendered'
+        return render, pureref.read(resaved)
+
+
+def diagnostics(log: str) -> str:
+    return '\n'.join(line for line in log.splitlines()
+                     if ('[Warning]' in line or '[Critical]' in line)
+                     and not any(noise in line for noise in BENIGN))
+
+
+def full_scene() -> Scene:
+    """One scene using every field this package knows how to write."""
+    scene = Scene()
+    group = scene.add_group(name='Everything', background_color='#4020a0ff',
+                            lock_mode=LOCK_OPEN)
+    scene.add_image(FIXTURES / 'alpha.png', parent=group, x=-260, y=0,
+                    scale_x=10, scale_y=10, link=True)
+    scene.add_image(FIXTURES / 'tiny.png', parent=group, x=-120, y=0,
+                    scale_x=20, scale_y=20, flags=0)
+    scene.add_image(FIXTURES / 'tiny.png', parent=group, x=40, y=0,
+                    scale_x=20, scale_y=20, flags=RENDER_SMOOTH | RENDER_GRAYSCALE)
+    animated = scene.add_image(FIXTURES / 'anim.gif', parent=group, x=200, y=0,
+                               scale_x=6, scale_y=6)
+    animated.playback.state, animated.playback.frame = PLAYBACK_PAUSED, 1
+    scene.add_image(FIXTURES / 'blue.png', parent=group, x=340, y=0,
+                    scale_x=2, scale_y=2, crop=(0, 0, 20, 40))
+    scene.add_note('Everything Ω 中', parent=group, x=-60, y=-140,
+                   text_color='#ff40ff', background_color='#80304050')
+    scene.add_drawing([Stroke(path=CropPath([(0, -260, 120), (1, 260, 120)]),
+                              rgba=(240, 200, 60, 255), width=6, dashed=True)],
+                      parent=group)
+    return scene
+
+
+def check_2_x(session: Session) -> None:
+    scene = full_scene()
+    renders = {}
+    for version in ('2.1', '2.0'):
+        path = session.directory / f'written-{version}.pur'
+        pureref.write(scene, path, version=version)
+        render, resaved = session.open(f'written-{version}', path)
+        renders[version] = render.read_bytes()
+        assert resaved.resources[0].linked, 'the linked image lost its link'
+        flags = {item.flags for item in resaved.images}
+        assert 0 in flags, 'the nearest-neighbour flag was not kept'
+        assert RENDER_SMOOTH | RENDER_GRAYSCALE in flags, \
+            'the grayscale flag was not kept'
+        animated = [item for item in resaved.images
+                    if item.playback.state == PLAYBACK_PAUSED]
+        assert animated and animated[0].playback.frame == 1, 'playback state was lost'
+        assert resaved.notes[0].text_color == '#ff40ff', 'note text color was lost'
+        assert resaved.groups[0].lock_mode == LOCK_OPEN, 'group lock mode was lost'
+        assert resaved.drawings[0].strokes[0].dashed, 'the dash flag was lost'
+        session.results[f'written_{version}_loads_and_survives_a_resave'] = True
+    assert renders['2.1'] == renders['2.0'], \
+        'the 2.0 and 2.1 envelopes rendered differently'
+    session.results['both_envelopes_render_identically'] = True
+
+
+def check_1_x(session: Session) -> None:
+    scene = Scene()
+    for index, name in enumerate(('red.png', 'blue.png', 'red.png')):
+        scene.add_image(FIXTURES / name, x=index * 150, y=0)
+    scene.add_note('written as 1.10', x=0, y=-150)
+    path = session.directory / 'written-1.10.pur'
+    pureref.write(scene, path, version='1.10')
+    _, resaved = session.open('written-1.10', path)
+    assert len(resaved.images) == 3, 'an image instance went missing'
+    assert len(resaved.resources) == 2, 'the shared image was not shared'
+    assert resaved.notes[0].text.strip() == 'written as 1.10', 'the note was lost'
+    session.results['written_1_10_loads_in_pureref'] = True
+
+
+def check_conversions(session: Session) -> None:
+    to_modern = session.directory / 'legacy-as-2.1.pur'
+    pureref.convert(FIXTURES / 'legacy-1.10.pur', to_modern)
+    _, resaved = session.open('legacy-as-2.1', to_modern)
+    assert len(resaved.images) == 3
+    to_legacy = session.directory / 'mixed-as-1.10.pur'
+    losses = pureref.convert(FIXTURES / 'app-2.0.3-mixed.pur', to_legacy, version='1.10')
+    assert losses, 'converting a 2.x scene to 1.10 should report losses'
+    _, resaved = session.open('mixed-as-1.10', to_legacy)
+    assert len(resaved.images) == 2
+    session.results['conversions_load_in_both_directions'] = True
+
+
+def check_repacking() -> dict:
+    """Offline, but the point of the whole exercise: exact repacking."""
+    exact = 0
+    for path in sorted(FIXTURES.glob('*.pur')):
+        data = path.read_bytes()
+        scene = pureref.read_bytes(data)
+        if scene.source_version == '1.10':
+            assert pureref.write_bytes(scene, version='1.10') == data, path.name
+        else:
+            from pureref.v2 import envelope
+            wrapper, database = envelope.unwrap(data)
+            assert wrapper.checksum_valid, path.name
+            assert envelope.wrap(database, wrapper) == data, path.name
+        exact += 1
+    return {'fixtures_repacked_exactly': exact}
+
+
+def main() -> int:
+    if not Path(executable()).exists() and not shutil.which(executable()):
+        print(f'PureRef not found at {executable()!r}; set PUREREF_EXE',
+              file=sys.stderr)
+        return 2
+    with tempfile.TemporaryDirectory(prefix='pureref-integration-') as directory:
+        session = Session(Path(directory))
+        session.results.update(check_repacking())
+        check_2_x(session)
+        check_1_x(session)
+        check_conversions(session)
+        print(json.dumps(session.results, indent=2))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

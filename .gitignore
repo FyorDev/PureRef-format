@@ -10,3 +10,9 @@ venv
 # Program folders
 Artists
 Purs
+
+# Packaging and tooling
+build
+dist
+*.egg-info
+.pytest_cache

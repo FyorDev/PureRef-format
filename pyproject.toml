@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pureref-format"
+version = "2.0.0"
+description = "Read, write and convert PureRef .pur files (1.10, 1.11.1, 2.0, 2.1)"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = []
+keywords = ["pureref", "pur", "reference", "moodboard", "file-format"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Multimedia :: Graphics",
+]
+
+[project.optional-dependencies]
+# Only the extras need Pillow; reading, writing and the layout do not.
+thumbnails = ["pillow>=10"]
+
+[project.scripts]
+pureref = "pureref.cli:main"
+
+[project.urls]
+Repository = "https://github.com/FyorDev/PureRef-format"
+
+[tool.setuptools]
+packages = ["pureref", "pureref.v1", "pureref.v2", "purformat"]
