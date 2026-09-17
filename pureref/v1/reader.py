@@ -137,7 +137,9 @@ def _read_image_item(cursor: Cursor, ids) -> tuple[int, ImageItem]:
         else:
             name = cursor.read_string()
     extras['brute_force'] = brute_force
-    extras['leading_one'] = cursor.read('d')
+    # Per-item opacity, which PureRef keeps as a float internally, so a value
+    # read back from the application is single-precision.
+    opacity = cursor.read('d')
     transform, perspective = _read_matrix(cursor)
     transform.dx, transform.dy = cursor.read('2d')
     extras['perspective'] = perspective
@@ -155,8 +157,8 @@ def _read_image_item(cursor: Cursor, ids) -> tuple[int, ImageItem]:
     child_count = int.from_bytes(tail[21:25], 'big')
     if cursor.pos != end:
         extras['unparsed'] = cursor.take(end - cursor.pos)
-    item = ImageItem(name=name, transform=transform, z=z, bounds=bounds,
-                     resource=_placeholder(), extras={'v1': extras})
+    item = ImageItem(name=name, transform=transform, z=z, opacity=opacity,
+                     bounds=bounds, resource=_placeholder(), extras={'v1': extras})
     _read_children(cursor, item, child_count, ids)
     return item_id, item
 

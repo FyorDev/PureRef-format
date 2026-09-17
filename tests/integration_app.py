@@ -1,13 +1,21 @@
 """Load the files this package writes in the real PureRef and check them.
 
-    PUREREF_EXE=/usr/bin/PureRef DISPLAY=:0 python -m tests.integration_app
+    DISPLAY=:0 PUREREF_BUILDS=~/pureref python -m tests.integration_app
+    DISPLAY=:0 PUREREF_EXE=/usr/bin/PureRef python -m tests.integration_app
+
+`PUREREF_BUILDS` points at a folder of unpacked releases, each holding
+`<version>/usr/bin/PureRef` — the layout you get from extracting the `.deb`
+downloads. Every build found there is exercised: 1.x builds against the files
+this package writes as 1.10, 2.x builds against the 2.0 and 2.1 ones, which is
+the only way to check the 1.x writer against the application that owns the
+format. `PUREREF_EXE` runs a single build instead.
 
 Everything runs against a throwaway settings file in a fresh temporary folder, so
 the machine's PureRef configuration and open canvases are untouched. Only
 synthetic images from `tests/fixtures` are used.
 
-PureRef needs a display: the Linux AppImage ships no `offscreen` Qt plugin, so on
-Linux this has to run on an X display.
+PureRef needs a display: its AppImage ships no `offscreen` Qt plugin, so on Linux
+this has to run on an X display.
 """
 from __future__ import annotations
 
@@ -30,20 +38,43 @@ BENIGN = ('QFontDatabase: Cannot find font directory', 'Note that Qt no longer s
           'Ignoring WAYLAND_DISPLAY')
 
 
-def executable() -> str:
-    return os.environ.get('PUREREF_EXE') or shutil.which('PureRef') or WINDOWS_DEFAULT
+def builds() -> list[tuple[str, str]]:
+    """Every PureRef this run should test, as (version, path) pairs."""
+    folder = os.environ.get('PUREREF_BUILDS')
+    found = []
+    if folder:
+        for candidate in sorted(Path(folder).expanduser().glob('*/usr/bin/PureRef')):
+            found.append((candidate.parents[2].name, str(candidate)))
+    if found:
+        return found
+    single = os.environ.get('PUREREF_EXE') or shutil.which('PureRef') or WINDOWS_DEFAULT
+    return [(version_of(single), single)] if Path(single).exists() else []
+
+
+def version_of(path: str) -> str:
+    finished = subprocess.run([path, '--version'], capture_output=True, timeout=120)
+    text = (finished.stdout + finished.stderr).decode(errors='replace')
+    for word in text.split():
+        if word[:1].isdigit():
+            return word
+    return 'unknown'
 
 
 class Session:
-    """One temporary workspace plus the PureRef command line."""
+    """One temporary workspace plus one PureRef build's command line."""
 
-    def __init__(self, directory: Path):
+    def __init__(self, directory: Path, version: str, executable: str):
         self.directory = directory
+        self.version = version
+        self.executable = executable
+        # The 2.x command line only saves to a destination that already exists;
+        # 1.x instead pops a confirmation dialog when one does, and hangs.
+        self.saves_need_the_file_to_exist = not version.startswith('1.')
         self.settings = directory / 'settings.ini'
         self.results: dict = {}
 
-    def run(self, *commands: str, timeout: int = 120) -> str:
-        arguments = [executable(), '-s', str(self.settings)]
+    def run(self, *commands: str, timeout: int = 60) -> str:
+        arguments = [self.executable, '-s', str(self.settings)]
         for command in commands:
             arguments += ['-c', command]
         finished = subprocess.run(arguments, capture_output=True, timeout=timeout)
@@ -53,7 +84,8 @@ class Session:
         """Load a file, export a render and save it again; return both paths."""
         render = self.directory / f'{name}.png'
         resaved = self.directory / f'{name}-resaved.pur'
-        resaved.touch()  # the 2.x CLI only saves to a destination that exists
+        if self.saves_need_the_file_to_exist:
+            resaved.touch()
         log = self.run(f'load;{path}', f'exportScene;{render};{width};{height};true;false',
                        f'save;{resaved}', 'exit')
         (self.directory / f'{name}.log').write_text(log)
@@ -124,17 +156,51 @@ def check_2_x(session: Session) -> None:
 
 
 def check_1_x(session: Session) -> None:
+    """The 1.10 writer, against whichever PureRef is driving this session."""
     scene = Scene()
     for index, name in enumerate(('red.png', 'blue.png', 'red.png')):
-        scene.add_image(FIXTURES / name, x=index * 150, y=0)
-    scene.add_note('written as 1.10', x=0, y=-150)
+        scene.add_image(FIXTURES / name, x=index * 150, y=0, opacity=1.0 - index * 0.3)
+    scene.add_image(FIXTURES / 'blue.png', x=450, y=0, crop=(0, 0, 20, 40))
+    scene.add_note('written as 1.10 Ω', x=0, y=-150, text_color='#ffff8040')
     path = session.directory / 'written-1.10.pur'
     pureref.write(scene, path, version='1.10')
     _, resaved = session.open('written-1.10', path)
-    assert len(resaved.images) == 3, 'an image instance went missing'
+    assert len(resaved.images) == 4, 'an image instance went missing'
     assert len(resaved.resources) == 2, 'the shared image was not shared'
-    assert resaved.notes[0].text.strip() == 'written as 1.10', 'the note was lost'
-    session.results['written_1_10_loads_in_pureref'] = True
+    assert resaved.notes[0].text.strip() == 'written as 1.10 Ω', 'the note was lost'
+    note = resaved.notes[0]
+    if session.saves_need_the_file_to_exist:
+        # 2.x converts a 1.x note by moving its colour into the HTML
+        assert '#ffff8040' in (note.html or ''), f'the note colour is gone: {note.html}'
+    else:
+        assert note.text_color == '#ffff8040', f'the note colour became {note.text_color}'
+    # instances are grouped by the image they share, so compare by position
+    opacities = {round(item.x): round(item.opacity, 3) for item in resaved.images}
+    assert opacities == {0: 1.0, 150: 0.7, 300: 0.4, 450: 1.0}, opacities
+    cropped = [item for item in resaved.images if round(item.x) == 450][0]
+    crop = tuple(round(v) for v in cropped.bounds.bounding_box())
+    assert crop == (-20, -40, 0, 0), f'the crop became {crop}'
+    session.results['written_1_10_loads_and_survives_a_resave'] = True
+
+
+def check_1_x_authentic(session: Session) -> None:
+    """Read what this build saves, and hand it back unchanged."""
+    path = session.directory / 'app-made.pur'
+    if session.saves_need_the_file_to_exist:
+        path.touch()
+    log = session.run(f'load;{FIXTURES / "red.png"};100;200',
+                      f'load;{FIXTURES / "blue.png"};300;0', f'save;{path}', 'exit')
+    problems = diagnostics(log)
+    assert not problems, f'saving a fresh scene complained:\n{problems}'
+    data = path.read_bytes()
+    scene = pureref.read_bytes(data)
+    assert scene.source_version == '1.10', scene.source_version
+    assert scene.extras['v1']['checksum_valid'], 'checksum mismatch on an app-made file'
+    assert scene.extras['v1']['application_version'] == session.version, (
+        scene.extras['v1']['application_version'], session.version)
+    assert [item.resource.size for item in scene.images] == [(64, 32), (40, 80)]
+    assert pureref.write_bytes(scene, version='1.10') == data, 'repack was not exact'
+    session.results['app_made_file_repacks_byte_for_byte'] = True
 
 
 def check_conversions(session: Session) -> None:
@@ -168,17 +234,23 @@ def check_repacking() -> dict:
 
 
 def main() -> int:
-    if not Path(executable()).exists() and not shutil.which(executable()):
-        print(f'PureRef not found at {executable()!r}; set PUREREF_EXE',
-              file=sys.stderr)
+    found = builds()
+    if not found:
+        print('No PureRef found; set PUREREF_BUILDS or PUREREF_EXE', file=sys.stderr)
         return 2
-    with tempfile.TemporaryDirectory(prefix='pureref-integration-') as directory:
-        session = Session(Path(directory))
-        session.results.update(check_repacking())
-        check_2_x(session)
-        check_1_x(session)
-        check_conversions(session)
-        print(json.dumps(session.results, indent=2))
+    results = {'offline': check_repacking()}
+    for version, executable in found:
+        with tempfile.TemporaryDirectory(prefix=f'pureref-{version}-') as directory:
+            session = Session(Path(directory), version, executable)
+            if version.startswith('1.'):
+                check_1_x_authentic(session)
+                check_1_x(session)
+            else:
+                check_2_x(session)
+                check_1_x(session)
+                check_conversions(session)
+            results[version] = session.results
+    print(json.dumps(results, indent=2))
     return 0
 
 

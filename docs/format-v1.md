@@ -1,8 +1,13 @@
 # The PureRef 1.10 / 1.11.1 `.pur` format
 
-Everything here was derived from files written by PureRef 1.10 and 1.11.1 and is
+Everything here was derived from files written by PureRef 1.10.4 and 1.11.1, and
+checked by loading this package's output back into both of them; it is
 implemented in `pureref/v1`. PureRef 1.11.1 still writes `1.10` in the header, so
-that string is a format version, not an application version.
+that string is a format version, not an application version — the application's
+own version sits twelve bytes later.
+
+For the same scene, 1.10.4 and 1.11.1 produce byte-identical files apart from
+that application-version string and the checksum that covers it.
 
 All integers are big-endian; reals are IEEE-754 binary64. Strings are Qt
 `QString`s: a `uint32` **byte** count followed by UTF-16BE code units, where
@@ -28,7 +33,7 @@ references      one 20-byte record per image item
 | 14 | 2 | number of image items |
 | 16 | 8 | offset where the reference table starts |
 | 24 | 4 | `00 00 00 0c`, the byte length of the application-version string |
-| 28 | 12 | UTF-16BE application version; PureRef-format leaves this zero-filled and PureRef accepts it |
+| 28 | 12 | UTF-16BE application version — `1.10.4` or `1.11.1`, six characters exactly. This package writes back whatever it read and zero-fills it for new files, which PureRef accepts |
 | 40 | 4 | `00 00 00 40`, the byte length of the checksum string |
 | 44 | 64 | UTF-16BE lowercase MD5 hex of everything from offset 108 on |
 | 108 | 4 | number of item ids |
@@ -39,9 +44,11 @@ references      one 20-byte record per image item
 | 216 | 4 | view x, int32 |
 | 220 | 4 | view y, int32 |
 
-The remaining header bytes are zero in everything observed. `pureref` keeps the
-header it read and only rewrites the fields above, so unknown values survive a
-load and save.
+The remaining header bytes are zero in everything observed, and PureRef preserves
+whatever is there: a file written with `0xAA` through bytes 152-175 and `0xBB`
+through 184-207 comes back with both runs intact. `pureref` keeps the header it
+read and only rewrites the fields above, so unknown values survive a load and
+save.
 
 This layout is the same idea as the 2.x envelope — version string, counts, an
 offset, an application-version string, an MD5 checksum string — which makes the
@@ -57,8 +64,9 @@ other formats (Pillow) or refuses.
 Between the PNGs sit four-byte slots:
 
 * `FF FF FF FF` — a **linked** image: no data in the file, loaded from the item's
-  source path instead. PureRef 2.x re-saves such an image as `source_type = 2`,
-  its own linked-resource form.
+  source path instead. PureRef 1.x resolves the path on load and **embeds the
+  file on its next save**, so the link does not survive a 1.x round trip; PureRef
+  2.x instead keeps it as `source_type = 2`, its own linked-resource form.
 * any other value — another **instance** of the image that owns the preceding
   PNG, holding the id of the item that owns it.
 
@@ -87,10 +95,10 @@ uint32  34
 uint32  0                       -- only when the image was brute-force loaded
 QString source                  -- "BruteForceLoaded" for recovered images
 QString name                    -- omitted for brute-force loaded images
-double  1.0
+double  opacity                 -- 1.0 when fully opaque
 6d      m11 m12 m13 m21 m22 m23 -- the linear part of the transform
 2d      x y                     -- the image's center on the canvas
-double  1.0
+double  1.0                     -- rewritten as 1.0 whatever it held
 uint32  item id
 double  z
 6d      matrix before cropping
@@ -98,12 +106,29 @@ double  z
 double  crop scale
 uint32  crop point count
         per point: uint32 kind (0 for the first, 1 after), double x, double y
-double  0.0
-uint32  1
-int8    0
-int64   -1
+double  0.0                     -- kept, no observed effect
+uint32  1                       -- kept, no observed effect
+int8    0                       -- kept as a boolean: anything non-zero becomes 1
+uint32  2000                    -- kept, no observed effect
+uint32  2000                    -- kept, no observed effect
 uint32  number of note children
 ```
+
+**The double before the matrix is the item's opacity.** Writing 1.0, 0.5 and 0.15
+renders the three images at full, half and near-transparent, and PureRef writes
+the value back — as single precision, so 0.15 returns as
+`0.15000000596046448`. Every file PureRef itself writes has 1.0 there, which is
+why it reads like a constant. The double *after* the position is a constant: any
+other value is rewritten as 1.0.
+
+`m13` and `m23` are stored but not kept: values of 0.5 and 0.75 come back as 0,
+so the transform is affine in practice.
+
+The trailing block is stored state PureRef hands back unchanged (it rewrote only
+the `int8`, normalising 3 to 1). PureRef writes `2000, 2000` where this
+package's predecessor wrote `-1` as an `int64`, and both load; varying any of it
+changes nothing on screen, including the render of a large image, so it is not a
+resolution limit that affects drawing.
 
 The crop points are a closed outline in centered pixel coordinates: an uncropped
 64×32 image spans `(-32,-16)` to `(32,16)`, which is also how 2.x stores
@@ -167,6 +192,7 @@ versions of this project produce files PureRef opened with a corruption warning.
 
 ## What 1.x does not have
 
-Groups, drawings, per-item opacity, rich-text notes, render flags, animation and
-non-PNG image data all arrived with 2.x. `Scene.losses('1.10')` lists whichever
-of them a scene uses before you write it.
+Groups, drawings, rich-text notes, render flags, animation, item comments and
+non-PNG image data all arrived with 2.x. Image opacity did not: it is the field
+above. `Scene.losses('1.10')` lists whichever of the missing ones a scene uses
+before you write it.

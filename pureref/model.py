@@ -524,8 +524,11 @@ class Scene:
             reasons.append('render flags (bilinear/grayscale): not stored by 1.x')
         if any(item.playback.state != PLAYBACK_STATIC for item in self.images):
             reasons.append('animation playback state: not stored by 1.x')
-        if any(item.opacity != 1.0 for item in self.walk()):
-            reasons.append('item opacity: 1.x stores opacity for notes only')
+        if any(note.opacity != 1.0 for note in self.notes):
+            reasons.append("note opacity: 1.x keeps a note's alpha in its text colour")
+        if any(item.resource.linked for item in self.images):
+            reasons.append('linked images: 1.x stores a link, but PureRef 1.x resolves it '
+                           'and embeds the file on its next save')
         if any(note.html for note in self.notes):
             reasons.append('note HTML: 1.x notes are plain text')
         if any(item.comment for item in self.walk()):

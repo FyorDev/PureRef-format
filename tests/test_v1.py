@@ -51,6 +51,63 @@ class ReadTests(unittest.TestCase):
             pureref.read_bytes(bytes(broken))
 
 
+class AuthenticAppTests(unittest.TestCase):
+    """Files written by PureRef 1.10.4 and 1.11.1 themselves."""
+
+    names = ('app-1.10.4.pur', 'app-1.11.1.pur')
+
+    def test_both_builds_read_and_repack_byte_for_byte(self):
+        for name in self.names:
+            with self.subTest(name=name):
+                data = (FIXTURES / name).read_bytes()
+                scene = pureref.read_bytes(data)
+                self.assertTrue(scene.extras['v1']['checksum_valid'])
+                self.assertEqual(pureref.write_bytes(scene, version='1.10'), data)
+
+    def test_the_header_carries_the_application_version(self):
+        versions = [pureref.read(FIXTURES / name).extras['v1']['application_version']
+                    for name in self.names]
+        self.assertEqual(versions, ['1.10.4', '1.11.1'])
+
+    def test_1_11_1_still_writes_the_1_10_format(self):
+        for name in self.names:
+            self.assertEqual(pureref.detect((FIXTURES / name).read_bytes()), '1.10')
+
+    def test_the_two_builds_agree_on_everything_but_that_string(self):
+        first, second = ((FIXTURES / name).read_bytes() for name in self.names)
+        self.assertEqual(len(first), len(second))
+        differing = [index for index, (a, b) in enumerate(zip(first, second)) if a != b]
+        # the application-version string, then the checksum that covers it
+        self.assertTrue(all(28 <= index < 40 or 44 <= index < 108 for index in differing),
+                        differing[:10])
+
+    def test_scene_contents(self):
+        scene = pureref.read(FIXTURES / 'app-1.11.1.pur')
+        self.assertEqual([item.resource.size for item in scene.images],
+                         [(64, 32), (40, 80)])
+        self.assertEqual([(item.x, item.y) for item in scene.images],
+                         [(100.0, 200.0), (300.0, 0.0)])
+        self.assertEqual([item.name for item in scene.images], ['red', 'blue'])
+        self.assertEqual([item.opacity for item in scene.images], [1.0, 1.0])
+        self.assertEqual(scene.canvas, (-320.0, -216.0, 640.0, 432.0))
+
+
+class OpacityTests(unittest.TestCase):
+    """The double before an image item's matrix is its opacity."""
+
+    def test_opacity_round_trips(self):
+        scene = Scene()
+        for index, value in enumerate((1.0, 0.5, 0.25)):
+            scene.add_image(FIXTURES / 'red.png', x=index * 80, opacity=value)
+        again = pureref.read_bytes(pureref.write_bytes(scene, version='1.10'))
+        self.assertEqual([item.opacity for item in again.images], [1.0, 0.5, 0.25])
+
+    def test_image_opacity_is_not_a_loss(self):
+        scene = Scene()
+        scene.add_image(FIXTURES / 'red.png', opacity=0.5)
+        self.assertEqual(scene.losses('1.10'), [])
+
+
 class RoundTripTests(unittest.TestCase):
     def test_legacy_file_is_rewritten_byte_for_byte(self):
         data = LEGACY.read_bytes()

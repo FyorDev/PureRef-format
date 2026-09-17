@@ -144,7 +144,7 @@ class _Plan:
         stream += _optional_string(source)
         if not brute_force:
             stream += _optional_string(item.name)
-        stream += struct.pack('>d', legacy.get('leading_one', 1.0))
+        stream += struct.pack('>d', float(item.opacity))
         stream += _pack_matrix(item.transform, legacy.get('perspective', (0.0, 0.0)))
         stream += struct.pack('>2d', item.transform.dx, item.transform.dy)
         stream += struct.pack('>d', legacy.get('trailing_one', 1.0))

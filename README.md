@@ -33,9 +33,9 @@ The 1.x reverse engineering behind this project:
 * A layout helper that packs images into a tidy rectangle, which is what this
   project was originally for.
 
-Verified against PureRef 2.0.3 and files from 2.1.3; see
-[docs/format-v1.md](docs/format-v1.md) and [docs/format-v2.md](docs/format-v2.md)
-for the formats themselves.
+Verified against four real PureRef releases — **1.10.4, 1.11.1, 2.0.3 and
+2.1.3** — see [docs/format-v1.md](docs/format-v1.md) and
+[docs/format-v2.md](docs/format-v2.md) for the formats themselves.
 
 ## Library
 
@@ -117,15 +117,22 @@ non-PNG images as 1.10, which stores PNG only.
 
 ```sh
 python -m unittest discover -s tests            # no PureRef needed
+DISPLAY=:0 PUREREF_BUILDS=~/pureref python -m tests.integration_app
 DISPLAY=:0 PUREREF_EXE=/usr/bin/PureRef python -m tests.integration_app
 ```
 
 The unit suite covers the Qt primitives, both formats, conversions, the layout,
-the CLI and the deprecated shim, against fixtures written by PureRef itself. The
-integration suite loads the files this package writes in the real PureRef,
-exports renders, saves them again and checks that every field survived; it uses a
-throwaway settings file and only synthetic images, and on Linux it needs an X
-display because the AppImage ships no `offscreen` Qt plugin.
+the CLI and the deprecated shim, against fixtures written by PureRef itself.
+
+The integration suite loads the files this package writes in the real PureRef,
+exports renders, saves them again and checks that every field survived. Point
+`PUREREF_BUILDS` at a folder of unpacked releases — `<version>/usr/bin/PureRef`
+each, which is what extracting the `.deb` downloads gives you — and every build
+found is exercised: 1.x builds against 1.10 output, 2.x builds against 2.0 and
+2.1 output. That is the only way to check the 1.x writer against the application
+that owns the format, and it currently passes for 1.10.4, 1.11.1, 2.0.3 and
+2.1.3. It uses a throwaway settings file and only synthetic images, and on Linux
+it needs an X display because PureRef's AppImage ships no `offscreen` Qt plugin.
 
 ## Upgrading from the old `purformat` module
 
