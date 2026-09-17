@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pureref
 from pureref import (LOCK_OPEN, PLAYBACK_PAUSED, RENDER_GRAYSCALE, RENDER_SMOOTH,
-                     CropPath, Scene, Stroke)
+                     STROKE_DASHED, STROKE_FLAT, CropPath, Scene, Stroke)
 
 FIXTURES = Path(__file__).resolve().parent / 'fixtures'
 WINDOWS_DEFAULT = r'C:\Program Files\PureRef\PureRef.exe'
@@ -85,10 +85,13 @@ def full_scene() -> Scene:
     animated.playback.state, animated.playback.frame = PLAYBACK_PAUSED, 1
     scene.add_image(FIXTURES / 'blue.png', parent=group, x=340, y=0,
                     scale_x=2, scale_y=2, crop=(0, 0, 20, 40))
-    scene.add_note('Everything Ω 中', parent=group, x=-60, y=-140,
-                   text_color='#ff40ff', background_color='#80304050')
+    note = scene.add_note('Everything Ω 中', parent=group, x=-60, y=-140,
+                          text_color='#ff40ff', background_color='#80304050')
+    note.comment = 'a comment on a note'
     scene.add_drawing([Stroke(path=CropPath([(0, -260, 120), (1, 260, 120)]),
-                              rgba=(240, 200, 60, 255), width=6, dashed=True)],
+                              rgba=(240, 200, 60, 255), width=6, style=STROKE_DASHED),
+                       Stroke(path=CropPath([(0, -260, 160), (1, 260, 160)]),
+                              rgba=(120, 220, 255, 255), width=6, style=STROKE_FLAT)],
                       parent=group)
     return scene
 
@@ -111,7 +114,9 @@ def check_2_x(session: Session) -> None:
         assert animated and animated[0].playback.frame == 1, 'playback state was lost'
         assert resaved.notes[0].text_color == '#ff40ff', 'note text color was lost'
         assert resaved.groups[0].lock_mode == LOCK_OPEN, 'group lock mode was lost'
-        assert resaved.drawings[0].strokes[0].dashed, 'the dash flag was lost'
+        styles = [stroke.style for stroke in resaved.drawings[0].strokes]
+        assert styles == [STROKE_DASHED, STROKE_FLAT], f'stroke styles became {styles}'
+        assert resaved.notes[0].comment == 'a comment on a note', 'the comment was lost'
         session.results[f'written_{version}_loads_and_survives_a_resave'] = True
     assert renders['2.1'] == renders['2.0'], \
         'the 2.0 and 2.1 envelopes rendered differently'

@@ -75,7 +75,6 @@ def _write_items(db: Database, scene: Scene, resources) -> None:
     ids = _assign_ids(scene)
     for parent, siblings in _sibling_groups(scene):
         for index, item in enumerate(siblings):
-            extras = item.extras.get('v2', {})
             db.insert('items',
                       id=ids[id(item)],
                       parent=-1 if parent is None else ids[id(parent)],
@@ -86,7 +85,7 @@ def _write_items(db: Database, scene: Scene, resources) -> None:
                       z=float(ids[id(item)] + 1 if item.z is None else item.z),
                       opacity=float(item.opacity),
                       locked=int(bool(item.locked)),
-                      comment=extras.get('comment'))
+                      comment=item.comment)
             _write_subtype(db, item, ids[id(item)], resources)
 
 

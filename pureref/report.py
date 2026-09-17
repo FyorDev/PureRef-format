@@ -70,6 +70,7 @@ def _item(item) -> dict:
         'z': item.z,
         'order': str(item.order) if item.order is not None else None,
         'opacity': item.opacity,
+        'comment': item.comment,
     }
     if isinstance(item, ImageItem):
         width, height = item.size
@@ -89,7 +90,7 @@ def _item(item) -> dict:
         described.update(lock_mode=item.lock_mode, background=item.background_color)
     elif isinstance(item, DrawItem):
         described.update(strokes=len(item.strokes),
-                         dashed=sum(1 for stroke in item.strokes if stroke.dashed))
+                         styles=sorted({stroke.style for stroke in item.strokes}))
     if item.children:
         described['children'] = [_item(child) for child in item.children]
     return described

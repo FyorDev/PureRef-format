@@ -41,6 +41,11 @@ PLAYBACK_PLAYING = 3
 LOCK_OPEN = 0
 LOCK_CLOSED = 1
 
+# Stroke.style, the trailing int of a serialized stroke.
+STROKE_ROUND = 0      # solid, rounded ends: what PureRef writes
+STROKE_DASHED = 1
+STROKE_FLAT = 2       # solid, square ends, which widens the item's bounds
+
 NOTE_COMFORTABLE = 'comfortable'
 NOTE_COMPACT = 'compact'
 NOTE_STYLES = {NOTE_COMFORTABLE: 0, NOTE_COMPACT: 1}
@@ -161,23 +166,32 @@ class Playback:
 
 @dataclass
 class Stroke:
-    """One freehand or straight stroke of a drawing item."""
+    """One freehand or straight stroke of a drawing item.
+
+    `style` is the stroke's appearance: STROKE_ROUND, STROKE_DASHED or
+    STROKE_FLAT. `point` is a transient point the application uses while a stroke
+    is being drawn; it is (0, 0) in every saved file and has no visible effect.
+    """
 
     path: Path = field(default_factory=Path)
     rgba: tuple[int, int, int, int] = (46, 132, 170, 200)
     width: float = 5.0
-    dashed: bool = False
-    # The 20 trailing option bytes; only the last one (the dash flag) is understood,
-    # so the rest is carried through untouched.
-    options: bytes = bytes(20)
+    style: int = STROKE_ROUND
+    point: tuple[float, float] = (0.0, 0.0)
 
     def __post_init__(self):
-        if len(self.options) != 20:
-            raise ValueError('A stroke carries exactly 20 option bytes')
         if any(not 0 <= channel <= 255 for channel in self.rgba):
             raise ValueError('Stroke colors are 8-bit RGBA')
         if self.width <= 0:
             raise ValueError('Stroke width must be positive')
+
+    @property
+    def dashed(self) -> bool:
+        return self.style == STROKE_DASHED
+
+    @dashed.setter
+    def dashed(self, value: bool) -> None:
+        self.style = STROKE_DASHED if value else STROKE_ROUND
 
 
 @dataclass
@@ -190,6 +204,9 @@ class Item:
     order: Fraction | None = None
     opacity: float = 1.0
     locked: bool = False
+    # The note PureRef attaches through its comment dialog: free text, shown in
+    # the item's tooltip. 1.x has nowhere to put it.
+    comment: str | None = None
     children: list['Item'] = field(default_factory=list)
     extras: dict = field(default_factory=dict)
 
@@ -511,6 +528,8 @@ class Scene:
             reasons.append('item opacity: 1.x stores opacity for notes only')
         if any(note.html for note in self.notes):
             reasons.append('note HTML: 1.x notes are plain text')
+        if any(item.comment for item in self.walk()):
+            reasons.append('item comments: 1.x has no comment field')
         formats = {item.resource.format.upper() for item in self.images
                    if not item.resource.linked} - {'PNG'}
         if formats:

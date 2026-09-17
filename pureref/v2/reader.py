@@ -73,8 +73,11 @@ def _item(row, subtypes, resources) -> Item:
         order=_order(row.get('sort_order')),
         opacity=1.0 if row.get('opacity') is None else float(row['opacity']),
         locked=bool(row.get('locked')),
-        extras={'v2': {'id': row['id'], 'comment': row.get('comment'),
-                       'row': _extra_columns(row, 'items')}})
+        # Declared INTEGER but holding the comment text; SQLite's integer
+        # affinity turns a numeric-looking comment into a number, so anything
+        # that comes back is rendered as text again.
+        comment=None if row.get('comment') is None else str(row['comment']),
+        extras={'v2': {'id': row['id'], 'row': _extra_columns(row, 'items')}})
     item_id = row['id']
     if item_id in subtypes['items_images']:
         return _image_item(subtypes['items_images'][item_id], resources, common)

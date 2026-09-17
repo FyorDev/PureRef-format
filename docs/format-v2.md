@@ -39,7 +39,9 @@ signature to the end of the file recovers only the displaced prefix.
 The **`2.0` layout has no thumbnail field**: its header ends at the checksum.
 Adding an empty thumbnail array to a `2.0` header makes PureRef fail with
 `Open failed … no such table: metadata`, because the database is then
-reconstructed four bytes out of step.
+reconstructed four bytes out of step. That layout belongs to the first 2.x
+releases: 2.0.3 (September 2024) already writes `2.1` with a thumbnail, and the
+changelog only adds a *setting* to stop generating thumbnails in 2.1.0.
 
 The checksum is `md5(file[end_of_checksum_field:])`, so it covers the thumbnail,
 the database body and the displaced prefix — not the reconstructed database. A
@@ -47,7 +49,8 @@ wrong checksum is a warning, not an error: PureRef still opens the file.
 
 Previews are 256×256 RGB JPEG renders of the canvas in PureRef's own saves, and
 the same bytes appear in `metadata.thumbnail`. A PNG preview is accepted too, so
-`pureref` can supply one without a JPEG encoder.
+`pureref` can supply one without a JPEG encoder. On Windows this is what the
+shell thumbnail provider reads, which is the reason to bother writing one.
 
 ## Database
 
@@ -111,6 +114,11 @@ for `type_id 1024` a NUL-terminated registered type name, then the value.
 | 1024 `BigRational` | two big integers: numerator then denominator |
 | 1024 `QList<GraphicsDrawItem::Stroke>` | stroke count, then the strokes below |
 
+`items.comment` is not a number despite its `INTEGER` declaration: it holds the
+comment text an item carries (`GraphicsItem::setComment(const QString&)`), shown
+in the item's tooltip. SQLite's integer affinity means a comment that looks like
+a number is stored as one, so `'42'` comes back as `42`.
+
 `QPainterPath` element kinds: 0 move-to, 1 line-to, 2 first cubic control point,
 3 cubic continuation (two of them per curve).
 
@@ -129,28 +137,57 @@ Verified by ordering: six images given the orders `-3`, `0`, `3`, `7/2`, `5` and
 
 ### Strokes
 
+The application exports its own stream operators for `GraphicsDrawItem::Stroke`,
+and disassembling them gives the struct exactly:
+
 ```text
-uint8  100                     -- per-stroke serialization marker
-uint8  1                       -- QColor RGB
+int8   version                 -- 100; a lower value means something else, below
+int8   1                       -- QColor RGB
 uint16 alpha, red, green, blue, 0
 double width
 QPainterPath                   -- no QVariant wrapper here
-byte   options[20]             -- options[19] is the dash flag
+double point_x, point_y        -- QPointF, (0, 0) in every saved file
+int32  style                   -- only present when version > 99
 ```
 
-Channels are `value * 257` of an 8-bit channel. `options[19] = 1` draws a dashed
-stroke — PureRef re-serializes exactly that after loading one. The other 19
-bytes have no observed effect and are carried through unchanged. Markers other
-than 100 fail to deserialize in 2.0.3, which is why the reader rejects them.
+Channels are `value * 257` of an 8-bit channel.
+
+`style` is the stroke's appearance: **0** solid with rounded ends (all PureRef
+2.0.3 and 2.1.3 ever write, for freehand and straight strokes alike), **1**
+dashed, **2** solid with square ends. Style 2 also widens the item's bounding
+rectangle — `GraphicsDrawItem::strokeStyleExtraBounds` returns an empty rectangle
+for every other style and expands the path's end points by the stroke width for
+this one. Other values draw like 0.
+
+`version` below 100 is not a version at all: the reader seeks one byte back and
+reads that byte as the start of the QColor, then skips the trailing `style`. That
+is the layout from before the version byte existed, and PureRef still loads it
+and rewrites it as version 100. It is also why a bogus marker produces garbage
+rather than an error — a QColor spec of 200 is not RGB.
+
+`point` is transient state the application keeps while a stroke is being drawn;
+saved files always carry (0, 0) and a real coordinate there changes nothing.
 
 ## Images and instances
 
 `images.source_type` is `1` for embedded data and `2` for a linked file
-(`data` and `checksum` NULL, path in `source` and `origin`). PureRef
-deduplicates embedded resources by checksum and linked ones by path, and it
-searches the `.pur`'s own folder and subfolders when a linked file has moved.
+(`data` and `checksum` NULL, path in `source` and `origin`), and it has no other
+values: `SceneSerializerSqlite::storeImage` binds 1 when it deduplicates by
+checksum and 2 when it deduplicates by path. Web images are downloaded and
+embedded, with the URL left in `origin`/`source`.
+
+When a linked file has moved, PureRef retries the path under the `.pur`'s own
+folder, dropping leading components one at a time: for `/tmp/gone/wanted.png`
+beside `board.pur` it tries `<folder>/tmp/gone/wanted.png`, then
+`<folder>/gone/wanted.png`, then `<folder>/wanted.png`. On a hit it rewrites
+`source` and `origin` to what it found; otherwise the item renders as a
+missing-image placeholder. A copy in an unrelated subfolder is not found.
+
 `format` is not normalized: it is the lowercase file extension when the image
-came from a path and the uppercase detected format otherwise.
+came from a path and the uppercase detected format otherwise. With
+`AutoDownscale` enabled, imports are reduced before they are stored — a 3000×2000
+PNG with a 512 limit becomes 512×342 re-encoded bytes — and nothing in the row
+says so; mip levels live in PureRef's own cache directory, not in the file.
 
 An instance's `image_transform` maps image pixels into item coordinates and
 translates by `(-width/2, -height/2)`, so **an image item's position is its
@@ -164,8 +201,11 @@ y0 = top  - height/2       y1 = y0 + crop height
 ```
 
 `flags` is a render-flag bitmask: `0x1` bilinear sampling (PureRef's default;
-`0` renders nearest-neighbour), `0x2` the grayscale filter. Higher bits have no
-observed effect and survive a re-save.
+`0` renders nearest-neighbour), `0x2` the grayscale filter. There are no other
+bits: `setRenderFlags` stores the word untouched and only reacts to `0x2`, and
+every other read of it masks `& 0x1` into
+`QPainter::setRenderHint(SmoothPixmapTransform, …)` or `>> 1 & 0x1` into the
+image cache. Higher bits survive a re-save and do nothing.
 
 `playback_state` is `0` for stills, `2` paused at `playback_frame` — the only
 state where that frame is rendered — and `3` playing, which is what PureRef
@@ -187,10 +227,17 @@ it, and the paths are in item coordinates.
 
 ## Metadata
 
-One row with `id = 0`. `scene_rect` is the canvas rectangle PureRef frames on
-open; leaving it NULL makes PureRef compute the framing, which is what `pureref`
-does for scenes that did not come from a 2.x file — a 1.x canvas is a scrollable
-area, not a content rectangle. `view_transform` carries the zoom,
-`horizontal_scroll` and `vertical_scroll` the pan. `saved`, `last_save_path`,
-`last_load_path` and `last_load_checksum` are PureRef's own bookkeeping and are
-filled in again on its next save.
+One row with `id = 0`. `scene_rect` is the scene's bounding rectangle including
+the origin — a single 64×32 image centred at (100, 200) gives `(0, 0, 132, 216)`
+— and a file converted from 1.x keeps the old 1.x canvas corner in it, which is
+how converted scenes end up with `(-10000, -10000, …)`. Leaving it NULL makes
+PureRef compute the framing, which is what `pureref` does for scenes that did not
+come from a 2.x file: a 1.x canvas is a scrollable area, not a content rectangle.
+
+`view_transform` carries the zoom, `horizontal_scroll` and `vertical_scroll` the
+pan. The rest is save bookkeeping PureRef fills in again on its next save:
+`last_save_path` is the last save's directory, `last_load_path` the path the
+scene is associated with (its own, after a save), `last_load_checksum` the header
+checksum of the file the scene was loaded from — so PureRef can tell whether the
+file on disk changed underneath it — and `saved` is 0 when the scene had never
+been associated with a `.pur` before this save.

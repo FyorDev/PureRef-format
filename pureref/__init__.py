@@ -15,6 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .model import (LATEST, LOCK_CLOSED, LOCK_OPEN, NOTE_COMFORTABLE, NOTE_COMPACT,
+                    STROKE_DASHED, STROKE_FLAT, STROKE_ROUND,
                     PLAYBACK_PAUSED, PLAYBACK_PLAYING, PLAYBACK_STATIC, PLAYBACK_STOPPED,
                     RENDER_GRAYSCALE, RENDER_SMOOTH, VERSION_1, VERSION_2_0, VERSION_2_1,
                     VERSIONS, DrawItem, GroupItem, ImageItem, Item, NoteItem, Playback,
@@ -31,6 +32,7 @@ __all__ = [
     'RENDER_SMOOTH', 'RENDER_GRAYSCALE', 'PLAYBACK_STATIC', 'PLAYBACK_STOPPED',
     'PLAYBACK_PAUSED', 'PLAYBACK_PLAYING', 'LOCK_OPEN', 'LOCK_CLOSED',
     'NOTE_COMFORTABLE', 'NOTE_COMPACT',
+    'STROKE_ROUND', 'STROKE_DASHED', 'STROKE_FLAT',
 ]
 
 __version__ = '2.0.0'

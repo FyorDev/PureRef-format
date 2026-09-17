@@ -28,7 +28,8 @@ The 1.x reverse engineering behind this project:
 * **Round-trips exactly**: every test fixture, written by PureRef itself, comes
   back byte for byte after a load and save.
 * Images (embedded or linked), positions, rotation, scale, opacity, crops,
-  shared resources, notes, groups, drawings, render flags and animation state.
+  shared resources, notes, groups, drawings, render flags, animation state,
+  stroke styles and per-item comments.
 * A layout helper that packs images into a tidy rectangle, which is what this
   project was originally for.
 
@@ -47,7 +48,8 @@ group = scene.add_group(name='Studies', background_color='#4020a0ff')
 scene.add_image('sketch.png', parent=group, x=0, y=0, rotation=15, opacity=0.8)
 scene.add_image('photo.jpg', parent=group, x=300, y=0, crop=(0, 0, 400, 400))
 scene.add_image('huge.png', parent=group, x=700, y=0, link=True)   # not embedded
-scene.add_note('Ω 中', parent=group, x=0, y=-200, text_color='#eaeaea')
+note = scene.add_note('Ω 中', parent=group, x=0, y=-200, text_color='#eaeaea')
+note.comment = 'shows up in the item tooltip'
 
 losses = pureref.write(scene, 'board.pur', overwrite=True)   # 2.1 by default
 ```

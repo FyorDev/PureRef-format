@@ -5,7 +5,8 @@ from pathlib import Path as FilePath
 
 import pureref
 from pureref import (LOCK_OPEN, PLAYBACK_PAUSED, PLAYBACK_PLAYING, RENDER_GRAYSCALE,
-                     RENDER_SMOOTH, CropPath, Scene, Stroke)
+                     RENDER_SMOOTH, STROKE_DASHED, STROKE_FLAT, CropPath, Scene,
+                     Stroke)
 from pureref.qt import FormatError
 from pureref.v2 import envelope as env
 from pureref.v2 import schema
@@ -13,7 +14,8 @@ from pureref.v2.database import Database
 
 FIXTURES = FilePath(__file__).resolve().parent / 'fixtures'
 APP_FILES = ['app-2.0.3-image', 'app-2.0.3-mixed', 'app-2.0.3-anim',
-             'app-2.0.3-linked', 'app-2.0.3-dashed', 'envelope-2.0']
+             'app-2.0.3-linked', 'app-2.0.3-dashed', 'app-2.0.3-comment',
+             'envelope-2.0']
 
 
 class EnvelopeTests(unittest.TestCase):
@@ -121,6 +123,68 @@ class ReadTests(unittest.TestCase):
         self.assertEqual(dashes, [False, True])
 
 
+class StrokeTests(unittest.TestCase):
+    """The trailing bytes of a stroke are a QPointF and a style int."""
+
+    def test_styles_and_point_round_trip(self):
+        scene = Scene()
+        for style in (0, STROKE_DASHED, STROKE_FLAT, 7):
+            scene.add_drawing([Stroke(path=CropPath([(0, 0, 0), (1, 10, 0)]),
+                                      style=style, point=(1.5, -2.5))])
+        again = pureref.read_bytes(pureref.write_bytes(scene))
+        self.assertEqual([item.strokes[0].style for item in again.drawings],
+                         [0, STROKE_DASHED, STROKE_FLAT, 7])
+        self.assertEqual(again.drawings[1].strokes[0].point, (1.5, -2.5))
+        self.assertTrue(again.drawings[1].strokes[0].dashed)
+        self.assertFalse(again.drawings[2].strokes[0].dashed)
+
+    def test_dashed_is_a_view_on_style(self):
+        stroke = Stroke()
+        self.assertFalse(stroke.dashed)
+        stroke.dashed = True
+        self.assertEqual(stroke.style, STROKE_DASHED)
+        stroke.dashed = False
+        self.assertEqual(stroke.style, 0)
+
+    def test_strokes_written_before_the_version_byte_still_read(self):
+        """PureRef treats a first byte below 100 as the start of the QColor."""
+        scene = pureref.read(FIXTURES / 'legacy-stroke.pur')
+        stroke, = scene.drawings[0].strokes
+        self.assertEqual(stroke.rgba, (240, 200, 60, 255))
+        self.assertEqual(stroke.width, 16.0)
+        self.assertEqual(stroke.style, 0)
+        self.assertEqual(len(stroke.path.elements), 2)
+
+    def test_rewriting_a_legacy_stroke_adds_the_version(self):
+        scene = pureref.read(FIXTURES / 'legacy-stroke.pur')
+        again = pureref.read_bytes(pureref.write_bytes(scene))
+        self.assertEqual(again.drawings[0].strokes[0].rgba, (240, 200, 60, 255))
+        from pureref.qt import Cursor, cell_to_bytes, read_variant_header
+        from pureref.v2 import envelope
+        _, database = envelope.unwrap(pureref.write_bytes(scene))
+        with Database(database, read_only=True) as db:
+            payload = cell_to_bytes(db.rows('items_drawings')[0]['strokes'])
+        cursor = Cursor(payload)
+        read_variant_header(cursor)
+        self.assertEqual(cursor.read('I'), 1)       # one stroke
+        self.assertEqual(cursor.read('b'), 100)     # now carrying a version byte
+
+
+class CommentTests(unittest.TestCase):
+    def test_comments_are_text_in_an_integer_column(self):
+        scene = pureref.read(FIXTURES / 'app-2.0.3-comment.pur')
+        comments = [item.comment for item in scene.images]
+        self.assertEqual(comments, ['a written comment', '42', '7'])
+
+    def test_comments_round_trip(self):
+        scene = Scene()
+        item = scene.add_image(FIXTURES / 'red.png')
+        item.comment = 'remember why this is here'
+        again = pureref.read_bytes(pureref.write_bytes(scene))
+        self.assertEqual(again.images[0].comment, 'remember why this is here')
+        self.assertIn('item comments: 1.x has no comment field', scene.losses('1.10'))
+
+
 class MalformedTests(unittest.TestCase):
     def build(self, rows):
         from pureref.qt import big_rational_cell, transform_cell
@@ -189,7 +253,7 @@ class WriteTests(unittest.TestCase):
         scene.add_note('Ω 中', parent=group, x=0, y=-150, text_color='#ff40ff',
                        background_color='#80304050', style='compact')
         scene.add_drawing([Stroke(path=CropPath([(0, 0, 0), (1, 200, 100)]),
-                                  rgba=(250, 160, 50, 255), width=4, dashed=True)],
+                                  rgba=(250, 160, 50, 255), width=4, style=STROKE_DASHED)],
                           parent=group)
         return scene
 

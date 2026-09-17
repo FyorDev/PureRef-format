@@ -4,7 +4,7 @@ from pathlib import Path as FilePath
 from tempfile import TemporaryDirectory
 
 import pureref
-from pureref import Scene, Stroke, CropPath
+from pureref import STROKE_DASHED, CropPath, Scene, Stroke
 from pureref.layout import natural_key, pack_rows
 
 FIXTURES = FilePath(__file__).resolve().parent / 'fixtures'
@@ -61,7 +61,7 @@ class ConvertTests(unittest.TestCase):
 
     def test_drawings_survive_a_2_1_to_2_0_to_2_1_trip(self):
         scene = Scene()
-        scene.add_drawing([Stroke(path=CropPath([(0, 0, 0), (1, 10, 10)]), dashed=True)])
+        scene.add_drawing([Stroke(path=CropPath([(0, 0, 0), (1, 10, 10)]), style=STROKE_DASHED)])
         once = pureref.read_bytes(pureref.write_bytes(scene, version='2.0'))
         twice = pureref.read_bytes(pureref.write_bytes(once, version='2.1'))
         self.assertTrue(twice.drawings[0].strokes[0].dashed)
