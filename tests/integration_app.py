@@ -195,9 +195,9 @@ def check_1_x_authentic(session: Session) -> None:
     data = path.read_bytes()
     scene = pureref.read_bytes(data)
     assert scene.source_version == '1.10', scene.source_version
-    assert scene.extras['v1']['checksum_valid'], 'checksum mismatch on an app-made file'
-    assert scene.extras['v1']['application_version'] == session.version, (
-        scene.extras['v1']['application_version'], session.version)
+    assert scene.legacy.checksum_valid, 'checksum mismatch on an app-made file'
+    assert scene.legacy.application_version == session.version, (
+        scene.legacy.application_version, session.version)
     assert [item.resource.size for item in scene.images] == [(64, 32), (40, 80)]
     assert pureref.write_bytes(scene, version='1.10') == data, 'repack was not exact'
     session.results['app_made_file_repacks_byte_for_byte'] = True

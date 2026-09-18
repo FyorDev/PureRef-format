@@ -159,6 +159,54 @@ class Resource:
 
 
 @dataclass
+class Legacy1xImage:
+    """1.x fields an image item carries that the model has no home for.
+
+    They exist so a file written by PureRef 1.x comes back byte for byte: the
+    pre-crop transform it keeps for "reset cropping", the two perspective terms
+    it stores and then ignores, and the trailing block it hands back unchanged.
+    """
+
+    source: str | None = None
+    brute_force: bool = False
+    before_crop: 'Transform' = field(default_factory=lambda: Transform())
+    before_crop_perspective: tuple[float, float] = (0.0, 0.0)
+    crop_offset: tuple[float, float] | None = None
+    crop_scale: float = 1.0
+    perspective: tuple[float, float] = (0.0, 0.0)
+    tail: bytes = b''
+    trailing: bytes = b''
+    address: tuple[int, int] | None = None
+    id: int | None = None
+
+
+@dataclass
+class Legacy1xNote:
+    """A 1.x note's exact 16-bit colours, so writing reproduces them."""
+
+    foreground: tuple[int, list[int]] | None = None
+    foreground_hsv: bool = False
+    background: tuple[int, list[int]] | None = None
+    background_hsv: bool = False
+    colour_gap: bytes = b'\0\0'
+    tail: bytes = b'\0\0'
+    perspective: tuple[float, float] = (0.0, 0.0)
+    trailing: bytes = b''
+    id: int | None = None
+
+
+@dataclass
+class Legacy1xFile:
+    """What a 1.x header held beyond the model's canvas and view."""
+
+    header: bytes = b''
+    application_version: str | None = None
+    checksum: str | None = None
+    checksum_valid: bool | None = None
+    folder: str | None = None
+
+
+@dataclass
 class Playback:
     state: int = PLAYBACK_STATIC
     frame: int = 0
@@ -209,6 +257,10 @@ class Item:
     # the item's tooltip. 1.x has nowhere to put it.
     comment: str | None = None
     children: list['Item'] = field(default_factory=list)
+    # Everything a backend needs to reproduce a file but the model does not
+    # model. `legacy` is the 1.x side, typed per item kind; `extras` is what a
+    # 2.x reader kept, keyed by section.
+    legacy: 'Legacy1xImage | Legacy1xNote | None' = None
     extras: dict = field(default_factory=dict)
 
     @property
@@ -358,6 +410,7 @@ class Scene:
     canvas: tuple[float, float, float, float] = (-10000.0, -10000.0, 10000.0, 10000.0)
     view: View = field(default_factory=View)
     source_version: str | None = None
+    legacy: Legacy1xFile | None = None
     # What a reader could not interpret; empty for a file this package fully
     # understands. Reading never raises for these.
     problems: list[Problem] = field(default_factory=list)

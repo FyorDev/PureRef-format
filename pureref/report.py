@@ -29,14 +29,14 @@ def summary(scene: Scene) -> dict:
 
 
 def _provenance(scene: Scene) -> dict:
-    legacy = scene.extras.get('v1')
+    legacy = scene.legacy
     modern = scene.extras.get('v2')
-    if legacy:
+    if legacy is not None:
         return {'container': {
-            'checksum': legacy.get('checksum'),
-            'checksum_valid': legacy.get('checksum_valid'),
-            'application_version': legacy.get('application_version'),
-            'folder': legacy.get('folder')}}
+            'checksum': legacy.checksum,
+            'checksum_valid': legacy.checksum_valid,
+            'application_version': legacy.application_version,
+            'folder': legacy.folder}}
     if modern:
         envelope = modern.get('envelope')
         return {'container': {
