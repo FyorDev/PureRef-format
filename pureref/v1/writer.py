@@ -12,11 +12,10 @@ from dataclasses import dataclass, field
 
 from .. import transcode
 from ..model import (VERSION_1, DrawItem, GroupItem, ImageItem, Item,
-                     V1Image, V1Note, NoteItem, Scene, Transform,
-                     _multiply)
+                     V1Image, V1Note, NoteItem, Scene, _multiply)
 from ..qt import Path, pack_string
 from . import format as fmt
-from .records import HEADER, IMAGE_ITEM, NOTE_ITEM, REFERENCE
+from .records import HEADER, IMAGE_ITEM, NOTE_ITEM, REFERENCE, from_transform
 
 DEFAULT_CANVAS = (-10000.0, -10000.0, 10000.0, 10000.0)
 
@@ -224,11 +223,11 @@ def _emit_image_item(stream: bytearray, plan: Plan, item: ImageItem) -> None:
         'source': source,
         'name': None if brute_force else item.name,
         'opacity': float(item.opacity),
-        'linear': _linear(item.transform, stored.perspective),
-        'position': (item.transform.dx, item.transform.dy),
+        **from_transform(item.transform, stored.perspective),
         'id': plan.ids[id(item)],
         'z': 1.0 if item.z is None else item.z,
-        'before_crop': _linear(stored.before_crop, stored.before_crop_perspective),
+        'before_crop': from_transform(stored.before_crop,
+                                      stored.before_crop_perspective)['linear'],
         'crop_offset': offset,
         'crop_scale': stored.crop_scale,
         'bounds': item.bounds or Path.centered_rectangle(*resource.size),
@@ -248,8 +247,7 @@ def _emit_note(stream: bytearray, plan: Plan, note: NoteItem) -> None:
     at = _open_block(stream, fmt.TEXT_ITEM_MARKER, fmt.TEXT_ITEM_NAME)
     NOTE_ITEM.write(stream, {
         'text': note.text,
-        'linear': _linear(note.transform, stored.perspective),
-        'position': (note.transform.dx, note.transform.dy),
+        **from_transform(note.transform, stored.perspective),
         'id': plan.ids[id(note)],
         'z': 1.0 if note.z is None else note.z,
         # HSV colours are normalised to RGB on read, so they go back as RGB.
@@ -267,12 +265,6 @@ def _emit_note(stream: bytearray, plan: Plan, note: NoteItem) -> None:
     _close_block(stream, at)
     for child in _notes(note.children):
         _emit_note(stream, plan, child)
-
-
-def _linear(transform: Transform | None, perspective) -> tuple:
-    transform = transform or Transform()
-    m13, m23 = perspective or (0.0, 0.0)
-    return (transform.m11, transform.m12, m13, transform.m21, transform.m22, m23)
 
 
 def _notes(children) -> list[NoteItem]:

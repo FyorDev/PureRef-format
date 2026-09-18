@@ -1,9 +1,10 @@
 """Which column holds which serialized value, and how it is read and written.
 
-Several 2.x columns hold a QDataStream QVariant rather than a plain SQLite value.
-Every one of them is declared here once, with both directions, so a column cannot
-be decoded one way and encoded another -- the mistake that is otherwise invisible
-until a file loads with the wrong geometry.
+A handful of 2.x columns hold a QDataStream QVariant rather than a plain SQLite
+value. Every one of them is declared here once, with both directions, so a column
+cannot be decoded one way and encoded another -- the mistake that is otherwise
+invisible until a file loads with the wrong geometry. `values.py` is where those
+encodings live; this is the map from column to encoding.
 
 `reader.py` looks a column up by name; `writer.py` encodes through the same entry
 unless the reader kept the cell verbatim because it could not be understood.
@@ -13,8 +14,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from ..qt import big_rational_cell, rect_cell, size_cell, transform_cell
 from . import values
+from .values import big_rational_cell, path_cell, rect_cell, size_cell, transform_cell
+
+
+# --- the map ------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -38,7 +42,7 @@ CELLS: dict[str, dict[str, Cell]] = {
         'image_transform': Cell(values.read_transform,
                                 lambda transform: transform_cell(transform.to_matrix9()),
                                 'QTransform'),
-        'image_bounds': Cell(values.read_bounds, lambda outline: outline.cell(),
+        'image_bounds': Cell(values.read_bounds, path_cell,
                              'QPainterPath'),
     },
     'items_notes': {

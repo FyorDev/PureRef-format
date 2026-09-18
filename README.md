@@ -171,8 +171,8 @@ DISPLAY=:0 PUREREF_BUILDS=~/pureref python -m tests.integration_app
 DISPLAY=:0 PUREREF_EXE=/usr/bin/PureRef python -m tests.integration_app
 ```
 
-The unit suite covers the Qt primitives, both formats, conversions, the layout,
-the CLI and the deprecated shim, against fixtures written by PureRef itself. It
+The unit suite covers the Qt primitives, both formats, conversions, the layout
+and the CLI, against fixtures written by PureRef itself. It
 also truncates and bit-flips every fixture and insists that a damaged file comes
 back as either a `Scene` with `problems` or a `FormatError` — never a traceback
 from inside a parser.
@@ -195,22 +195,6 @@ found is exercised: 1.x builds against 1.10 output, 2.x builds against 2.0 and
 that owns the format, and it currently passes for 1.10.4, 1.11.1, 2.0.3 and
 2.1.3. It uses a throwaway settings file and only synthetic images, and on Linux
 it needs an X display because PureRef's AppImage ships no `offscreen` Qt plugin.
-
-## Upgrading from the old `purformat` module
-
-The pre-2.0 API still works and still produces identical bytes, with a
-deprecation warning:
-
-```python
-import purformat                    # deprecated
-pur = purformat.PurFile()
-pur.read('board.pur')
-pur.write('copy.pur')
-```
-
-It is now a thin shim over `pureref`, which handles 2.x as well. The original
-scripts moved to [legacy/](legacy/) and still work; `pureref new` and
-`pureref batch` replace them.
 
 ## About
 

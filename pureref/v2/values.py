@@ -4,6 +4,10 @@ The cells are declared BLOB but stored with storage class TEXT: the payload's
 bytes were mapped to code points U+0000..U+00FF, so Latin-1 recovers them. Each
 payload is a QDataStream QVariant record: type id, a null flag, a registered type
 name for custom types, then the type's own data.
+
+`pureref/qt.py` writes the Qt side of those payloads; everything here is about
+the SQLite side, so the storage helpers and the per-type codecs live together.
+`cells.py` maps columns onto them.
 """
 from __future__ import annotations
 
@@ -13,8 +17,56 @@ from fractions import Fraction
 from ..model import STROKE_ROUND, Stroke, Transform
 from ..problems import Unparsed
 from ..qt import (TYPE_CUSTOM, TYPE_RECTF, TYPE_SIZEF, TYPE_TRANSFORM, Cursor,
-                  FormatError, Path, bytes_to_cell, cell_to_bytes, read_big_rational,
-                  read_variant_header, variant_cell)
+                  FormatError, Path, pack_big_rational, pack_matrix9, pack_variant,
+                  read_big_rational, read_variant_header)
+
+
+# --- storage ------------------------------------------------------------------
+
+def cell_to_bytes(value) -> bytes:
+    """Recover a serialized payload from a SQLite cell.
+
+    The payloads are stored with storage class TEXT: every byte was mapped to the
+    code point of the same value, so Latin-1 turns the string back into the
+    original bytes. True BLOB cells come back as bytes already.
+    """
+    if value is None:
+        return b''
+    if isinstance(value, str):
+        return value.encode('latin1')
+    return bytes(value)
+
+
+def bytes_to_cell(payload: bytes) -> str:
+    """Encode a payload the way PureRef binds it: a Latin-1 mapped string."""
+    return bytes(payload).decode('latin1')
+
+
+def variant_cell(type_id: int, payload: bytes, type_name: str | None = None) -> str:
+    return bytes_to_cell(pack_variant(type_id, payload, type_name))
+
+
+def transform_cell(matrix) -> str:
+    return variant_cell(TYPE_TRANSFORM, pack_matrix9(matrix))
+
+
+def rect_cell(x: float, y: float, width: float, height: float) -> str:
+    return variant_cell(TYPE_RECTF, struct.pack('>4d', x, y, width, height))
+
+
+def size_cell(width: float, height: float) -> str:
+    return variant_cell(TYPE_SIZEF, struct.pack('>2d', width, height))
+
+
+def big_rational_cell(value) -> str:
+    return variant_cell(TYPE_CUSTOM, pack_big_rational(value), 'BigRational')
+
+
+def path_cell(path: Path) -> str:
+    return variant_cell(TYPE_CUSTOM, path.pack(), 'QPainterPath')
+
+
+# --- codecs -------------------------------------------------------------------
 
 STROKE_TYPE_NAME = 'QList<GraphicsDrawItem::Stroke>'
 # Each stroke starts with a signed-char version. From 100 on, a trailing style

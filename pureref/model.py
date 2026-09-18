@@ -49,9 +49,12 @@ STROKE_ROUND = 0      # solid, rounded ends: what PureRef writes
 STROKE_DASHED = 1
 STROKE_FLAT = 2       # solid, square ends, which widens the item's bounds
 
+# items_notes.style. Only these two exist; PureRef renders anything else like
+# Compact, and this package keeps such a value on the item rather than in `style`.
 NOTE_COMFORTABLE = 'comfortable'
 NOTE_COMPACT = 'compact'
 NOTE_STYLES = {NOTE_COMFORTABLE: 0, NOTE_COMPACT: 1}
+NOTE_STYLE_NAMES = {stored: name for name, stored in NOTE_STYLES.items()}
 
 
 @dataclass

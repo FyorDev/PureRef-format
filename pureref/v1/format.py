@@ -75,6 +75,18 @@ def argb_to_color(argb: str | None) -> tuple[int, list[int]]:
     return sixteen_bit(values[0]), [sixteen_bit(value) for value in values[1:]]
 
 
+def read_colour(kind: int, opacity: int, channels) -> dict:
+    """One stored colour: `{'hsv': …, 'colour': (opacity, rgb)}`.
+
+    Kind 2 means the channels are HSV, which is normalized to RGB here; the flag
+    is kept so a file that stored HSV can be written back the way it came.
+    """
+    values = list(channels)
+    if kind == 2:
+        values = hsv_to_rgb16(values)
+    return {'hsv': kind == 2, 'colour': (opacity, values)}
+
+
 def hsv_to_rgb16(values) -> list[int]:
     """PureRef stores a color as either RGB or HSV; normalize HSV to RGB."""
     import colorsys

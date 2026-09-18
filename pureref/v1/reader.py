@@ -12,7 +12,7 @@ from ..model import (VERSION_1, ImageItem, Item, V1File, V1Image,
                      V1Note, NoteItem, Resource, Scene, Transform, View)
 from ..qt import Cursor, FormatError
 from . import format as fmt
-from .records import HEADER, IMAGE_ITEM, NOTE_ITEM, REFERENCE
+from .records import HEADER, IMAGE_ITEM, NOTE_ITEM, REFERENCE, to_transform
 
 
 def read(data: bytes) -> Scene:
@@ -125,14 +125,8 @@ def _carrier(item: ImageItem) -> V1Image:
     return stored
 
 
-def _transform(values: dict) -> tuple[Transform, tuple[float, float]]:
-    m11, m12, m13, m21, m22, m23 = values['linear']
-    x, y = values['position']
-    return Transform(m11, m12, m21, m22, x, y), (m13, m23)
-
-
 def _image_item(values: dict) -> ImageItem:
-    transform, perspective = _transform(values)
+    transform, perspective = to_transform(values)
     before_m11, before_m12, before_m13, before_m21, before_m22, before_m23 = \
         values['before_crop']
     source = values['source']
@@ -153,11 +147,11 @@ def _image_item(values: dict) -> ImageItem:
 
 
 def _note_item(values: dict) -> NoteItem:
-    transform, perspective = _transform(values)
-    foreground = _colour(values['foreground_kind'], values['foreground_opacity'],
-                         values['foreground_rgb'])
-    background = _colour(values['background_kind'], values['background_opacity'],
-                         values['background_rgb'])
+    transform, perspective = to_transform(values)
+    foreground = fmt.read_colour(values['foreground_kind'], values['foreground_opacity'],
+                                 values['foreground_rgb'])
+    background = fmt.read_colour(values['background_kind'], values['background_opacity'],
+                                 values['background_rgb'])
     stored = V1Note(
         foreground=foreground['colour'], foreground_hsv=foreground['hsv'],
         background=background['colour'], background_hsv=background['hsv'],
@@ -167,13 +161,6 @@ def _note_item(values: dict) -> NoteItem:
                     text_color=fmt.color_to_argb(*foreground['colour']),
                     background_color=fmt.color_to_argb(*background['colour']),
                     v1=stored)
-
-
-def _colour(kind: int, opacity: int, channels) -> dict:
-    values = list(channels)
-    if kind == 2:
-        values = fmt.hsv_to_rgb16(values)
-    return {'hsv': kind == 2, 'colour': (opacity, values)}
 
 
 # --- references and assembly --------------------------------------------------

@@ -13,15 +13,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..model import (DrawItem, GroupItem, ImageItem, Item, NoteItem, Playback,
-                     Resource, Scene, Transform, V2File, V2Item, View)
+from ..model import (NOTE_COMPACT, NOTE_STYLE_NAMES, DrawItem, GroupItem, ImageItem,
+                     Item, NoteItem, Playback, Resource, Scene, Transform, V2File,
+                     V2Item, View)
 from ..problems import Problem
 from ..qt import FormatError, Path
 from . import cells, schema, values
 from .document import Document
-
-NOTE_STYLE_NAMES = {0: 'comfortable', 1: 'compact'}
-
 
 def read(data: bytes) -> Scene:
     with Document.open(data) as document:
@@ -219,7 +217,7 @@ class _Builder:
             background_color=self.text(row.get('background_color'), where,
                                        'background_color'),
             fixed_size=size if isinstance(size, tuple) else (-1.0, -1.0),
-            style=NOTE_STYLE_NAMES.get(style, 'compact'),
+            style=NOTE_STYLE_NAMES.get(style, NOTE_COMPACT),
             **common)
 
     def _group(self, row, common) -> GroupItem:

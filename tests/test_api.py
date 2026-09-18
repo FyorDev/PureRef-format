@@ -1,11 +1,9 @@
 """The shapes of the public API: constructors, carriers and problem objects."""
 import unittest
-from pathlib import Path
 
 import pureref
 from pureref import Outline, Scene, Stroke
-
-FIXTURES = Path(__file__).parent / 'fixtures'
+from support import FIXTURES
 
 
 class OutlineTests(unittest.TestCase):

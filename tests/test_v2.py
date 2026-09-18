@@ -1,22 +1,19 @@
 """The 2.0 / 2.1 format: envelope, schema and serialized values."""
 import unittest
 from fractions import Fraction
-from pathlib import Path as FilePath
 
 import pureref
 from pureref import (LOCK_OPEN, PLAYBACK_PAUSED, PLAYBACK_PLAYING, RENDER_GRAYSCALE,
                      RENDER_SMOOTH, STROKE_DASHED, STROKE_FLAT, Outline, Scene,
                      Stroke)
-from pureref.qt import FormatError
+from pureref.qt import TYPE_CUSTOM, Cursor, FormatError, read_variant_header
 from pureref.v2 import Document
 from pureref.v2 import envelope as env
 from pureref.v2 import schema
 from pureref.v2.database import Database
-
-FIXTURES = FilePath(__file__).resolve().parent / 'fixtures'
-APP_FILES = ['app-2.0.3-image', 'app-2.0.3-mixed', 'app-2.0.3-anim',
-             'app-2.0.3-linked', 'app-2.0.3-dashed', 'app-2.0.3-comment',
-             'envelope-2.0']
+from pureref.v2.values import cell_to_bytes, variant_cell
+from support import APP_2X as APP_FILES
+from support import FIXTURES, build_2x, item_row
 
 
 class EnvelopeTests(unittest.TestCase):
@@ -160,9 +157,7 @@ class StrokeTests(unittest.TestCase):
         scene = pureref.read(FIXTURES / 'legacy-stroke.pur')
         again = pureref.read_bytes(pureref.write_bytes(scene))
         self.assertEqual(again.drawings[0].strokes[0].rgba, (240, 200, 60, 255))
-        from pureref.qt import Cursor, cell_to_bytes, read_variant_header
-        from pureref.v2 import envelope
-        _, database = envelope.unwrap(pureref.write_bytes(scene))
+        _, database = env.unwrap(pureref.write_bytes(scene))
         with Database(database, read_only=True) as db:
             payload = cell_to_bytes(db.rows('items_drawings')[0]['strokes'])
         cursor = Cursor(payload)
@@ -200,7 +195,6 @@ class UnknownValueTests(unittest.TestCase):
             return env.wrap(db.to_bytes(), envelope_)
 
     def test_a_future_type_is_kept_not_raised(self):
-        from pureref.qt import TYPE_CUSTOM, variant_cell
         future = variant_cell(TYPE_CUSTOM, b'\x01\x02\x03\x04', 'FutureType')
         scene = pureref.read_bytes(self.craft('sort_order', future))
         self.assertEqual([problem.code for problem in scene.problems], ['unparsed-value'])
@@ -211,7 +205,6 @@ class UnknownValueTests(unittest.TestCase):
         self.assertEqual(scene.notes[0].text, 'a note')
 
     def test_an_unparsed_cell_is_written_back_byte_for_byte(self):
-        from pureref.qt import TYPE_CUSTOM, cell_to_bytes, variant_cell
         future = variant_cell(TYPE_CUSTOM, b'\x01\x02\x03\x04', 'FutureType')
         scene = pureref.read_bytes(self.craft('sort_order', future))
         _, database = env.unwrap(pureref.write_bytes(scene))
@@ -264,51 +257,31 @@ class DocumentTests(unittest.TestCase):
 
 
 class MalformedTests(unittest.TestCase):
-    def build(self, rows):
-        from pureref.qt import big_rational_cell, transform_cell
-        with Database(pragmas=schema.PRAGMAS) as db:
-            schema.create(db.connection)
-            db.insert('metadata', id=0, application_version='2.1.3')
-            for item_id, parent in rows:
-                db.insert('items', id=item_id, parent=parent, name=f'item{item_id}',
-                          transform=transform_cell([1, 0, 0, 0, 1, 0, 0, 0, 1]),
-                          sort_order=big_rational_cell(item_id + 1), z=1.0,
-                          opacity=1.0, locked=0, comment=None)
-                db.insert('items_groups', id=item_id, background_color=None,
-                          lock_mode=1)
-            return env.wrap(db.to_bytes())
+    """Files no writer here produces, but a reader may still be handed."""
 
     def test_parent_cycles_do_not_hang(self):
-        scene = pureref.read_bytes(self.build([(0, 1), (1, 0), (2, 2)]))
+        groups = [(0, 1), (1, 0), (2, 2)]        # every item is its own ancestor
+        data = build_2x({
+            'items': [item_row(item_id, parent) for item_id, parent in groups],
+            'items_groups': [dict(id=item_id, background_color=None, lock_mode=1)
+                             for item_id, _ in groups]})
+        scene = pureref.read_bytes(data)
         self.assertEqual(len(list(scene.walk())), 3)
         self.assertEqual(len(scene.items), 3)
         self.assertTrue(pureref.write_bytes(scene))
 
     def test_items_without_a_subtype_row_are_kept(self):
-        from pureref.qt import transform_cell
-        with Database(pragmas=schema.PRAGMAS) as db:
-            schema.create(db.connection)
-            db.insert('metadata', id=0, application_version='2.1.3')
-            db.insert('items', id=0, parent=-1, name='bare',
-                      transform=transform_cell([1, 0, 0, 0, 1, 0, 0, 0, 1]),
-                      sort_order=None, z=1.0, opacity=1.0, locked=0, comment=None)
-            data = env.wrap(db.to_bytes())
+        data = build_2x({'items': [item_row(0, name='bare', sort_order=None)]})
         scene = pureref.read_bytes(data)
         self.assertEqual(scene.items[0].name, 'bare')
         self.assertTrue(scene.items[0].v2.orphan)
 
     def test_an_image_item_without_its_resource_is_reported(self):
-        from pureref.qt import transform_cell
-        with Database(pragmas=schema.PRAGMAS) as db:
-            schema.create(db.connection)
-            db.insert('metadata', id=0, application_version='2.1.3')
-            db.insert('items', id=0, parent=-1, name='ghost',
-                      transform=transform_cell([1, 0, 0, 0, 1, 0, 0, 0, 1]),
-                      sort_order=None, z=1.0, opacity=1.0, locked=0, comment=None)
-            db.insert('items_images', id=0, image=99, playback_speed=1.0,
-                      playback_state=0, image_transform=None, image_bounds=None,
-                      playback_frame=0, flags=1)
-            data = env.wrap(db.to_bytes())
+        data = build_2x({
+            'items': [item_row(0, name='ghost', sort_order=None)],
+            'items_images': [dict(id=0, image=99, playback_speed=1.0, playback_state=0,
+                                  image_transform=None, image_bounds=None,
+                                  playback_frame=0, flags=1)]})
         scene = pureref.read_bytes(data)
         self.assertEqual(len(scene.images), 1)
         self.assertEqual([problem.code for problem in scene.problems], ['missing-image'])

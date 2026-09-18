@@ -8,8 +8,7 @@ from tempfile import TemporaryDirectory
 
 import pureref
 from pureref.cli import main
-
-FIXTURES = FilePath(__file__).resolve().parent / 'fixtures'
+from support import FIXTURES
 
 
 def run(*argv) -> tuple[int, str, str]:

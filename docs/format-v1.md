@@ -164,8 +164,8 @@ then, in order:
 | Field | Encoding | Meaning |
 |---|---|---|
 | `text` | QString | plain text, not HTML |
-| `linear` | six doubles: m11 m12 m13 m21 m22 m23 | the linear part of the transform |
-| `position` | two doubles: x, y | position on the canvas |
+| `linear` | six doubles: m11 m12 m13 m21 m22 m23 | the linear part of the transform; m13 and m23 are rewritten as 0 |
+| `position` | two doubles: x, y | the note position on the canvas |
 | `_constant_one` | double | rewritten as 1.0 whatever it held |
 | `id` | uint32 | item id |
 | `z` | double | stacking |

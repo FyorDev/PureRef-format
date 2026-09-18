@@ -8,13 +8,13 @@ bug in a reader, because the input is attacker-supplied as far as this package
 is concerned.
 """
 import unittest
-from pathlib import Path
 
 import pureref
 from pureref.model import Scene
 from pureref.qt import FormatError
+from support import FIXTURES
 
-FIXTURES = Path(__file__).parent / 'fixtures'
+
 PUR_FILES = sorted(FIXTURES.glob('*.pur'))
 
 

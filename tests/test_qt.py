@@ -1,12 +1,10 @@
-"""The Qt primitives both formats are built from."""
+"""The Qt primitives both .pur generations are built from."""
 import struct
 import unittest
-from fractions import Fraction
 
-from pureref.qt import (Cursor, FormatError, Path, big_rational_cell, bytes_to_cell,
-                        cell_to_bytes, pack_big_integer, pack_bytes, pack_string,
-                        read_big_integer, read_big_rational, read_variant_header,
-                        transform_cell)
+from pureref.qt import (Cursor, FormatError, Path, pack_big_integer, pack_bytes,
+                        pack_big_rational, pack_matrix9, pack_string, pack_variant,
+                        read_big_integer, read_big_rational, read_variant_header)
 
 
 class StringTests(unittest.TestCase):
@@ -31,14 +29,16 @@ class StringTests(unittest.TestCase):
             Cursor(struct.pack('>I', 3) + b'abc').read_string()
 
 
-class CellTests(unittest.TestCase):
-    def test_payload_survives_the_latin1_round_trip(self):
-        payload = bytes(range(256)) + b'\0\0trailing'
-        self.assertEqual(cell_to_bytes(bytes_to_cell(payload)), payload)
+class VariantTests(unittest.TestCase):
+    def test_a_custom_type_carries_its_registered_name(self):
+        cursor = Cursor(pack_variant(1024, b'\x01\x02', 'BigRational'))
+        self.assertEqual(read_variant_header(cursor), (1024, False, 'BigRational'))
+        self.assertEqual(cursor.take(2), b'\x01\x02')
 
-    def test_blob_cells_pass_through(self):
-        self.assertEqual(cell_to_bytes(b'\x89PNG'), b'\x89PNG')
-        self.assertEqual(cell_to_bytes(None), b'')
+    def test_a_builtin_type_carries_none(self):
+        cursor = Cursor(pack_variant(80, pack_matrix9([1, 0, 0, 0, 1, 0, 9, 8, 1])))
+        self.assertEqual(read_variant_header(cursor), (80, False, None))
+        self.assertEqual(list(cursor.read('9d')), [1, 0, 0, 0, 1, 0, 9, 8, 1])
 
 
 class BigRationalTests(unittest.TestCase):
@@ -54,21 +54,16 @@ class BigRationalTests(unittest.TestCase):
         self.assertEqual(struct.unpack('>IQ2I', packed), (1, 2, 0, 1))
 
     def test_rationals_round_trip(self):
+        from fractions import Fraction
         for numerator, denominator in [(1, 1), (0, 1), (-3, 1), (7, 2), (2 ** 40, 3)]:
-            with self.subTest(value=(numerator, denominator)):
-                cursor = Cursor(cell_to_bytes(big_rational_cell(
-                    Fraction(numerator, denominator))))
-                read_variant_header(cursor)
-                self.assertEqual(read_big_rational(cursor),
-                                 Fraction(numerator, denominator))
+            value = Fraction(numerator, denominator)
+            with self.subTest(value=value):
+                self.assertEqual(read_big_rational(Cursor(pack_big_rational(value))), value)
 
     def test_one_matches_the_shape_PureRef_writes(self):
-        cursor = Cursor(cell_to_bytes(big_rational_cell(1)))
-        type_id, is_null, name = read_variant_header(cursor)
-        self.assertEqual((type_id, is_null, name), (1024, False, 'BigRational'))
-        # sign, block count, block, twice: the 1/1 that PureRef stores for the
-        # first sibling of a parent.
-        self.assertEqual(struct.unpack('>IQIIQI', cursor.take(32)),
+        # sign, block count, block, twice: the 1/1 PureRef stores for the first
+        # sibling of a parent.
+        self.assertEqual(struct.unpack('>IQIIQI', pack_big_rational(1)),
                          (1, 1, 1, 1, 1, 1))
 
 
@@ -82,23 +77,16 @@ class PathTests(unittest.TestCase):
     def test_round_trip(self):
         path = Path([(0, 1.0, 2.0), (2, 3.0, 4.0), (3, 5.0, 6.0), (3, 7.0, 8.0)],
                     subpath_start=0, fill_rule=1)
-        cursor = Cursor(cell_to_bytes(path.cell()))
-        read_variant_header(cursor)
-        again = Path.read(cursor)
-        self.assertEqual(again, path)
+        self.assertEqual(Path.read(Cursor(path.pack())), path)
 
     def test_implausible_element_count_is_rejected(self):
-        cursor = Cursor(struct.pack('>I', 0x7FFFFFFF))
         with self.assertRaises(FormatError):
-            Path.read(cursor)
+            Path.read(Cursor(struct.pack('>I', 0x7FFFFFFF)))
 
-
-class TransformTests(unittest.TestCase):
-    def test_transform_cell_holds_nine_doubles(self):
-        cursor = Cursor(cell_to_bytes(transform_cell([1, 0, 0, 0, 1, 0, 100, 200, 1])))
-        type_id, _, _ = read_variant_header(cursor)
-        self.assertEqual(type_id, 80)
-        self.assertEqual(list(cursor.read('9d')), [1, 0, 0, 0, 1, 0, 100, 200, 1])
+    def test_the_constructors_agree_on_direction(self):
+        self.assertEqual(Path.line(0, 0, 10, 5).points, [(0, 0), (10, 5)])
+        self.assertEqual(Path.polygon([(0, 0), (1, 0)]).points,
+                         [(0, 0), (1, 0), (0, 0)])
 
 
 if __name__ == '__main__':

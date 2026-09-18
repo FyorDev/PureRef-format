@@ -6,8 +6,7 @@ from tempfile import TemporaryDirectory
 import pureref
 from pureref import STROKE_DASHED, Outline, Scene, Stroke
 from pureref.layout import natural_key, pack_rows
-
-FIXTURES = FilePath(__file__).resolve().parent / 'fixtures'
+from support import FIXTURES
 
 
 class ConvertTests(unittest.TestCase):

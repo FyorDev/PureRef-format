@@ -98,36 +98,11 @@ def pack_matrix9(matrix) -> bytes:
     return struct.pack('>9d', *matrix)
 
 
-# --- PureRef 2.x cell payloads ------------------------------------------------
-
-def cell_to_bytes(value) -> bytes:
-    """Recover a serialized payload from a SQLite cell.
-
-    PureRef stores these payloads with storage class TEXT: every byte was mapped
-    to the code point of the same value, so Latin-1 turns the string back into
-    the original bytes. True BLOB cells come back as bytes already.
-    """
-    if value is None:
-        return b''
-    if isinstance(value, str):
-        return value.encode('latin1')
-    return bytes(value)
-
-
-def bytes_to_cell(payload: bytes) -> str:
-    """Encode a payload the way PureRef binds it: a Latin-1 mapped string."""
-    return bytes(payload).decode('latin1')
-
-
 def pack_variant(type_id: int, payload: bytes, type_name: str | None = None) -> bytes:
     header = struct.pack('>IB', type_id, 0)
     if type_name is not None:
         header += pack_bytes(type_name.encode('ascii') + b'\0')
     return header + payload
-
-
-def variant_cell(type_id: int, payload: bytes, type_name: str | None = None) -> str:
-    return bytes_to_cell(pack_variant(type_id, payload, type_name))
 
 
 def read_variant_header(cursor: Cursor) -> tuple[int, bool, str | None]:
@@ -137,18 +112,6 @@ def read_variant_header(cursor: Cursor) -> tuple[int, bool, str | None]:
         raw = cursor.read_bytes() or b''
         name = raw.rstrip(b'\0').decode('ascii', 'replace')
     return type_id, bool(is_null), name
-
-
-def transform_cell(matrix) -> str:
-    return variant_cell(TYPE_TRANSFORM, pack_matrix9(matrix))
-
-
-def rect_cell(x: float, y: float, width: float, height: float) -> str:
-    return variant_cell(TYPE_RECTF, struct.pack('>4d', x, y, width, height))
-
-
-def size_cell(width: float, height: float) -> str:
-    return variant_cell(TYPE_SIZEF, struct.pack('>2d', width, height))
 
 
 # --- BigRational --------------------------------------------------------------
@@ -180,10 +143,6 @@ def pack_big_rational(value) -> bytes:
     if order.denominator <= 0:  # Fraction normalizes, so this only guards misuse.
         raise ValueError('A BigRational needs a positive denominator')
     return pack_big_integer(order.numerator) + pack_big_integer(order.denominator)
-
-
-def big_rational_cell(value) -> str:
-    return variant_cell(TYPE_CUSTOM, pack_big_rational(value), 'BigRational')
 
 
 def read_big_rational(cursor: Cursor) -> Fraction:
@@ -253,9 +212,6 @@ class Path:
         if self.elements:
             payload += struct.pack('>ii', self.subpath_start, self.fill_rule)
         return payload
-
-    def cell(self) -> str:
-        return variant_cell(TYPE_CUSTOM, self.pack(), 'QPainterPath')
 
     @classmethod
     def read(cls, cursor: Cursor) -> Path:

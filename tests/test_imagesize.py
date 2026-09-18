@@ -2,11 +2,9 @@
 import struct
 import unittest
 import zlib
-from pathlib import Path as FilePath
 
 from pureref import imagesize
-
-FIXTURES = FilePath(__file__).resolve().parent / 'fixtures'
+from support import FIXTURES
 
 
 def png(width: int, height: int) -> bytes:

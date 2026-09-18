@@ -1,13 +1,13 @@
 """The 1.10 / 1.11.1 binary format."""
 import unittest
-from pathlib import Path as FilePath
 
 import pureref
 from pureref import ImageItem, NoteItem, Resource, Scene, Transform
 from pureref.qt import FormatError
 from pureref.v1 import format as fmt
+from support import FIXTURES
 
-FIXTURES = FilePath(__file__).resolve().parent / 'fixtures'
+
 LEGACY = FIXTURES / 'legacy-1.10.pur'
 
 

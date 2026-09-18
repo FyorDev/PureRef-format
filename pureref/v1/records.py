@@ -13,12 +13,52 @@ from __future__ import annotations
 
 import struct
 
+from ..model import Transform
 from ..qt import Cursor, FormatError, Path
 from ..records import (F64, I8, I32, U16, U32, U64, Codec, Field, Matrix6,
                        NullableUtf16String, PointF, Raw, Record, Rect, Tuple,
                        Utf16String, ZeroMarker)
 
 COLOUR = Tuple('H', 3, 'three uint16 channels')
+
+
+def placement(what: str) -> list[Field]:
+    """The five fields every item carries: where it is, which id, how high.
+
+    Both item records hold these, in this order, between their own head and
+    tail, so they are declared once and spliced into each.
+    """
+    return [
+        Field('linear', Matrix6, default=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0),
+              doc='the linear part of the transform; m13 and m23 are rewritten as 0'),
+        Field('position', PointF, default=(0.0, 0.0),
+              doc=f'the {what} on the canvas'),
+        Field('_constant_one', F64, default=1.0,
+              doc='rewritten as 1.0 whatever it held'),
+        Field('id', U32, default=0, doc='item id'),
+        Field('z', F64, default=1.0, doc='stacking'),
+    ]
+
+
+def to_transform(values: dict) -> tuple[Transform, tuple[float, float]]:
+    """A record's placement as a `Transform`, plus the two ignored terms.
+
+    PureRef stores a 3x3 linear part but rewrites m13 and m23 as 0, so those two
+    are carried on the item rather than folded into the transform.
+    """
+    m11, m12, m13, m21, m22, m23 = values['linear']
+    x, y = values['position']
+    return Transform(m11, m12, m21, m22, x, y), (m13, m23)
+
+
+def from_transform(transform: Transform | None,
+                   perspective: tuple[float, float] | None = None) -> dict:
+    """The inverse: the placement fields for a transform, ready for `write`."""
+    transform = transform or Transform()
+    m13, m23 = perspective or (0.0, 0.0)
+    return {'linear': (transform.m11, transform.m12, m13,
+                       transform.m21, transform.m22, m23),
+            'position': (transform.dx, transform.dy)}
 
 
 class CropOutline(Codec):
@@ -94,14 +134,7 @@ IMAGE_ITEM = Record('image item', [
           doc='omitted entirely for brute-force loaded images'),
     Field('opacity', F64, default=1.0,
           doc='1.0 when opaque; PureRef stores it as a float'),
-    Field('linear', Matrix6, default=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0),
-          doc='the linear part of the transform; m13 and m23 are rewritten as 0'),
-    Field('position', PointF, default=(0.0, 0.0),
-          doc='the image centre on the canvas'),
-    Field('_constant_one', F64, default=1.0,
-          doc='rewritten as 1.0 whatever it held'),
-    Field('id', U32, default=0, doc='item id'),
-    Field('z', F64, default=1.0, doc='stacking'),
+    *placement('image centre'),
     Field('before_crop', Matrix6, default=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0),
           doc='the transform before cropping, for "reset cropping"'),
     Field('crop_offset', PointF, default=(0.0, 0.0), doc='crop offset'),
@@ -115,13 +148,7 @@ IMAGE_ITEM = Record('image item', [
 
 NOTE_ITEM = Record('note item', [
     Field('text', Utf16String(), default='', doc='plain text, not HTML'),
-    Field('linear', Matrix6, default=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0),
-          doc='the linear part of the transform'),
-    Field('position', PointF, default=(0.0, 0.0), doc='position on the canvas'),
-    Field('_constant_one', F64, default=1.0,
-          doc='rewritten as 1.0 whatever it held'),
-    Field('id', U32, default=0, doc='item id'),
-    Field('z', F64, default=1.0, doc='stacking'),
+    *placement('note position'),
     Field('foreground_kind', I8, default=1, doc='1 = RGB, 2 = HSV'),
     Field('foreground_opacity', U16, default=0xFFFF, doc='16-bit alpha'),
     Field('foreground_rgb', COLOUR, default=(0xFFFF, 0xFFFF, 0xFFFF),

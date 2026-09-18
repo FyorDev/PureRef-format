@@ -28,9 +28,8 @@ pureref = "pureref.cli:main"
 Repository = "https://github.com/FyorDev/PureRef-format"
 
 [tool.setuptools]
-# `purformat` ships because old code imports it by name. The deprecated scripts
-# in legacy/, the tools/ and the tests are not part of the distribution.
-packages = ["pureref", "pureref.v1", "pureref.v2", "purformat"]
+# tools/ and tests/ are not part of the distribution.
+packages = ["pureref", "pureref.v1", "pureref.v2"]
 
 [tool.setuptools.package-data]
 pureref = ["py.typed"]
