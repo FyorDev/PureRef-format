@@ -89,6 +89,94 @@ PureRef reads its schema by column *name* (`PRAGMA table_info`,
 | `items_drawings` | stroke lists |
 | `metadata` | view, preview, application version, save bookkeeping |
 
+Column by column, generated from `pureref/v2/schema.py`, which is the same
+declaration the writer creates the database from:
+
+<!-- generated: columns -->
+### `images`
+
+| Column | Declared | Serialized | Holds |
+|---|---|---|---|
+| `id` | INTEGER PRIMARY KEY | — | resource id, referenced by items_images.image |
+| `source_type` | INTEGER | — | 1 embedded, 2 linked; there is no third value |
+| `origin` | TEXT | — | where the image originally came from, a path or a URL |
+| `source` | TEXT | — | the path a linked image is loaded from, rewritten when it is found again |
+| `format` | TEXT | — | not normalised: the lowercase file extension when imported from a path, the uppercase detected format otherwise |
+| `checksum` | TEXT | — | MD5 of the embedded bytes, the deduplication key; NULL when linked |
+| `data` | BLOB | — | the image bytes; NULL when linked |
+| `width` | INTEGER | — | pixel width, of the stored bytes -- a downscaled import stores the smaller size |
+| `height` | INTEGER | — | pixel height, likewise |
+
+### `metadata`
+
+| Column | Declared | Serialized | Holds |
+|---|---|---|---|
+| `id` | INTEGER PRIMARY KEY | — | always 0: the table holds one row |
+| `scene_rect` | TEXT | `QRectF` | the content rectangle, unioned with the origin |
+| `application_version` | TEXT | — | the PureRef that saved the file, matching the envelope |
+| `view_transform` | TEXT | `QTransform` | the view onto the scene; its scale is the zoom |
+| `thumbnail` | BLOB | — | the preview image, duplicated here and in the 2.1 envelope |
+| `horizontal_scroll` | INTEGER | — | the pan, in view coordinates |
+| `vertical_scroll` | INTEGER | — | the pan, likewise |
+| `last_save_path` | TEXT | — | the directory of the last save, which seeds the save dialog |
+| `last_load_path` | TEXT | — | the path the scene is associated with; after a save, that file |
+| `last_load_checksum` | TEXT | — | the header checksum of the file the scene was loaded from |
+| `saved` | INTEGER | — | 0 when the scene had never been associated with a .pur before this save |
+
+### `items`
+
+| Column | Declared | Serialized | Holds |
+|---|---|---|---|
+| `parent` | INTEGER | — | the parent object id, -1 for a root |
+| `id` | INTEGER PRIMARY KEY | — | object id; which subtype table holds it decides what kind of item it is |
+| `name` | TEXT | — | display name, nullable |
+| `transform` | BLOB | `QTransform` | the item placement, relative to its parent |
+| `sort_order` | BLOB | `BigRational` | sibling order, renumbered to 1..n on every save |
+| `z` | REAL | — | stacking, renumbered likewise |
+| `opacity` | REAL | — | alpha multiplier |
+| `locked` | INTEGER | — | lock flag |
+| `comment` | INTEGER | — | the comment text, despite the INTEGER declaration; shown in the tooltip |
+
+### `items_images`
+
+| Column | Declared | Serialized | Holds |
+|---|---|---|---|
+| `image` | INTEGER | — | which images row supplies the pixels; several items can share one |
+| `playback_speed` | REAL | — | playback multiplier; a float widened into a REAL |
+| `id` | INTEGER PRIMARY KEY | — | the item id this row describes |
+| `playback_state` | INTEGER | — | 0 still, 2 paused at playback_frame, 3 playing |
+| `image_transform` | BLOB | `QTransform` | maps image pixels into item coordinates, translating by (-w/2, -h/2), which is why an image item is positioned at its centre |
+| `image_bounds` | BLOB | `QPainterPath` | the visible outline in centred pixel coordinates: a closed rectangle unless cropped |
+| `playback_frame` | INTEGER | — | the frame a paused animation shows |
+| `flags` | INTEGER | — | bit 0x1 bilinear sampling, bit 0x2 the grayscale filter; nothing else is read |
+
+### `items_drawings`
+
+| Column | Declared | Serialized | Holds |
+|---|---|---|---|
+| `id` | INTEGER PRIMARY KEY | — | the item id this row describes |
+| `strokes` | BLOB | `QList<GraphicsDrawItem::Stroke>` | the whole drawing, in one cell |
+
+### `items_notes`
+
+| Column | Declared | Serialized | Holds |
+|---|---|---|---|
+| `text_color` | TEXT | — | the default colour, used when the HTML carries none |
+| `id` | INTEGER PRIMARY KEY | — | the item id this row describes |
+| `fixed_size` | TEXT | `QSizeF` | (-1, -1) means the note sizes itself to its text |
+| `background_color` | TEXT | — | #AARRGGBB or #RRGGBB, empty for the default |
+| `text` | TEXT | — | Qt rich text, not plain text |
+| `style` | INTEGER | — | 0 Comfortable, 1 Compact; other values render like Compact |
+
+### `items_groups`
+
+| Column | Declared | Serialized | Holds |
+|---|---|---|---|
+| `id` | INTEGER PRIMARY KEY | — | the item id this row describes |
+| `background_color` | TEXT | — | #AARRGGBB; the geometry comes from the children |
+| `lock_mode` | INTEGER | — | GraphicsGroupItem::LockMode: 0 Open, 1 Closed |
+<!-- end generated -->
+
 An item's kind comes from which subtype table holds its id. `items.parent` is
 `-1` for a root. `items.z` and `items.sort_order` are renumbered to `1..n` per
 parent on every save PureRef does, so small integers are all a writer needs.

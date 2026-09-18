@@ -22,3 +22,25 @@ class GeneratedTableTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SchemaNoteTests(unittest.TestCase):
+    """A column without a description cannot be documented, so it is an error."""
+
+    def test_every_column_has_a_note(self):
+        from pureref.v2 import schema
+        missing = [f'{table}.{column}' for table in schema.TABLES
+                   for column in schema.columns(table) if not schema.note(table, column)]
+        self.assertEqual(missing, [], 'add these to pureref/v2/schema.py NOTES')
+
+    def test_no_note_describes_a_column_that_is_gone(self):
+        from pureref.v2 import schema
+        stale = [f'{table}.{column}' for table, notes in schema.NOTES.items()
+                 for column in notes if column not in schema.columns(table)]
+        self.assertEqual(stale, [])
+
+    def test_every_serialized_column_is_a_real_column(self):
+        from pureref.v2 import cells, schema
+        unknown = [f'{table}.{column}' for table, entries in cells.CELLS.items()
+                   for column in entries if column not in schema.columns(table)]
+        self.assertEqual(unknown, [])

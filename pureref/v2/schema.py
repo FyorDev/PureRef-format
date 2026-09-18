@@ -54,6 +54,87 @@ TABLES = {
 
 ITEM_TABLES = ('items_images', 'items_notes', 'items_groups', 'items_drawings')
 
+# What each column holds. This is the only description of the columns in the
+# package: docs/format-v2.md is generated from it, and a test fails when a
+# column is added without one, so the schema cannot grow a silent field.
+NOTES = {
+    'images': {
+        'id': 'resource id, referenced by items_images.image',
+        'source_type': '1 embedded, 2 linked; there is no third value',
+        'origin': 'where the image originally came from, a path or a URL',
+        'source': 'the path a linked image is loaded from, rewritten when it is found again',
+        'format': 'not normalised: the lowercase file extension when imported from a path, the uppercase detected format otherwise',
+        'checksum': 'MD5 of the embedded bytes, the deduplication key; NULL when linked',
+        'data': 'the image bytes; NULL when linked',
+        'width': 'pixel width, of the stored bytes -- a downscaled import stores the smaller size',
+        'height': 'pixel height, likewise',
+    },
+    'metadata': {
+        'id': 'always 0: the table holds one row',
+        'scene_rect': 'the content rectangle, unioned with the origin',
+        'application_version': 'the PureRef that saved the file, matching the envelope',
+        'view_transform': 'the view onto the scene; its scale is the zoom',
+        'horizontal_scroll': 'the pan, in view coordinates',
+        'vertical_scroll': 'the pan, likewise',
+        'thumbnail': 'the preview image, duplicated here and in the 2.1 envelope',
+        'last_save_path': 'the directory of the last save, which seeds the save dialog',
+        'last_load_path': 'the path the scene is associated with; after a save, that file',
+        'last_load_checksum': 'the header checksum of the file the scene was loaded from',
+        'saved': '0 when the scene had never been associated with a .pur before this save',
+    },
+    'items': {
+        'id': 'object id; which subtype table holds it decides what kind of item it is',
+        'parent': 'the parent object id, -1 for a root',
+        'name': 'display name, nullable',
+        'transform': 'the item placement, relative to its parent',
+        'sort_order': 'sibling order, renumbered to 1..n on every save',
+        'z': 'stacking, renumbered likewise',
+        'opacity': 'alpha multiplier',
+        'locked': 'lock flag',
+        'comment': 'the comment text, despite the INTEGER declaration; shown in the tooltip',
+    },
+    'items_images': {
+        'id': 'the item id this row describes',
+        'image': 'which images row supplies the pixels; several items can share one',
+        'image_transform': 'maps image pixels into item coordinates, translating by (-w/2, -h/2), which is why an image item is positioned at its centre',
+        'image_bounds': 'the visible outline in centred pixel coordinates: a closed rectangle unless cropped',
+        'flags': 'bit 0x1 bilinear sampling, bit 0x2 the grayscale filter; nothing else is read',
+        'playback_state': '0 still, 2 paused at playback_frame, 3 playing',
+        'playback_frame': 'the frame a paused animation shows',
+        'playback_speed': 'playback multiplier; a float widened into a REAL',
+    },
+    'items_notes': {
+        'id': 'the item id this row describes',
+        'text': 'Qt rich text, not plain text',
+        'text_color': 'the default colour, used when the HTML carries none',
+        'background_color': '#AARRGGBB or #RRGGBB, empty for the default',
+        'fixed_size': '(-1, -1) means the note sizes itself to its text',
+        'style': '0 Comfortable, 1 Compact; other values render like Compact',
+    },
+    'items_groups': {
+        'id': 'the item id this row describes',
+        'background_color': '#AARRGGBB; the geometry comes from the children',
+        'lock_mode': 'GraphicsGroupItem::LockMode: 0 Open, 1 Closed',
+    },
+    'items_drawings': {
+        'id': 'the item id this row describes',
+        'strokes': 'the whole drawing, in one cell',
+    },
+}
+
+
+def note(table: str, column: str) -> str:
+    return NOTES.get(table, {}).get(column, '')
+
+
+def declaration(table: str, column: str) -> str:
+    """The column as it is declared, e.g. `data BLOB`."""
+    for entry in TABLES[table]:
+        if entry.split()[0] == column:
+            return entry
+    raise KeyError(f'{table}.{column}')
+
+
 SCHEMA = '\n'.join(f'CREATE TABLE {name} ({",".join(columns)});'
                    for name, columns in TABLES.items())
 

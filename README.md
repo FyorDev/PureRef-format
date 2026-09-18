@@ -157,8 +157,9 @@ also truncates and bit-flips every fixture and insists that a damaged file comes
 back as either a `Scene` with `problems` or a `FormatError` — never a traceback
 from inside a parser.
 
-The layout tables in `docs/format-v1.md` are generated from the record
-declarations the reader and writer use, and a test fails when they drift:
+The layout tables in `docs/format-v1.md` and the column tables in
+`docs/format-v2.md` are generated from the declarations the reader and writer
+use, and a test fails when they drift:
 
 ```sh
 python -m tools.generate_docs            # rewrite them

@@ -17,7 +17,7 @@ from ..model import (DrawItem, GroupItem, ImageItem, Item, NoteItem, Playback,
                      Resource, Scene, Transform, V2File, V2Item, View)
 from ..problems import Problem
 from ..qt import FormatError, Path
-from . import schema, values
+from . import cells, schema, values
 from .document import Document
 
 NOTE_STYLE_NAMES = {0: 'comfortable', 1: 'compact'}
@@ -41,14 +41,21 @@ class _Builder:
 
     # --- helpers --------------------------------------------------------------
 
-    def value(self, cell, reader, where: str, column: str):
-        """Decode one cell, or keep it verbatim and note why."""
+    def value(self, row, table: str, column: str, where: str, carried=None):
+        """Decode one serialized cell, the way `cells.py` says that column reads.
+
+        A cell that cannot be read is kept verbatim on the carrier and noted as a
+        problem, and the caller gets it back so it can fall back to a default.
+        """
+        cell = row.get(column)
         if cell is None:
             return None, None
-        decoded, complaint = values.decode(cell, reader)
+        decoded, complaint = values.decode(cell, cells.reader_for(table, column))
         if complaint is not None:
             self.problems.append(Problem('unparsed-value', complaint,
                                          f'{where}.{column}'))
+            if carried is not None:
+                carried.unparsed[column] = decoded
         return decoded, complaint
 
     def number(self, value, where: str, column: str, default, *, whole=True):
@@ -137,15 +144,9 @@ class _Builder:
         item_id = row['id']
         where = f'item {item_id}'
         carried = V2Item(id=item_id, columns=self.extra_columns(row, 'items'))
-        unparsed = carried.unparsed
-        transform, complaint = self.value(row.get('transform'), values.read_transform,
-                                          where, 'transform')
+        transform, _ = self.value(row, 'items', 'transform', where, carried)
+        order, complaint = self.value(row, 'items', 'sort_order', where, carried)
         if complaint:
-            unparsed['transform'] = transform
-        order, complaint = self.value(row.get('sort_order'), values.read_order,
-                                      where, 'sort_order')
-        if complaint:
-            unparsed['sort_order'] = order
             order = None
         common = dict(
             name=self.text(row.get('name'), where, 'name'),
@@ -177,23 +178,14 @@ class _Builder:
 
     def _image(self, row, resources, common, where) -> ImageItem:
         carried = common['v2']
-        unparsed = carried.unparsed
         resource = resources.get(row.get('image'))
         if resource is None:
             self.problems.append(Problem(
                 'missing-image', f'references image {row.get("image")!r}', where))
             resource = Resource(1, 1, b'', 'PNG')
         carried.subtype_columns = self.extra_columns(row, 'items_images')
-        pixel, complaint = self.value(row.get('image_transform'), values.read_transform,
-                                      where, 'image_transform')
-        if complaint:
-            unparsed['image_transform'] = pixel
-            pixel = None
-        bounds, complaint = self.value(row.get('image_bounds'), values.read_bounds,
-                                       where, 'image_bounds')
-        if complaint:
-            unparsed['image_bounds'] = bounds
-            bounds = None
+        pixel, _ = self.value(row, 'items_images', 'image_transform', where, carried)
+        bounds, _ = self.value(row, 'items_images', 'image_bounds', where, carried)
         # What could not be read is left out entirely: `ImageItem` derives the
         # centring transform and the full-image outline from the resource, which
         # is the best guess available and keeps the item usable.
@@ -218,11 +210,7 @@ class _Builder:
         carried = common['v2']
         carried.note_style = style
         carried.subtype_columns = self.extra_columns(row, 'items_notes')
-        size, complaint = self.value(row.get('fixed_size'), values.read_size,
-                                     where, 'fixed_size')
-        if complaint:
-            carried.unparsed['fixed_size'] = size
-            size = None
+        size, _ = self.value(row, 'items_notes', 'fixed_size', where, carried)
         html = self.text(row.get('text'), where, 'text')
         return NoteItem(
             html=html,
@@ -245,21 +233,17 @@ class _Builder:
     def _drawing(self, row, common, where) -> DrawItem:
         carried = common['v2']
         carried.subtype_columns = self.extra_columns(row, 'items_drawings')
-        strokes, complaint = self.value(row.get('strokes'), values.read_strokes,
-                                        where, 'strokes')
+        strokes, complaint = self.value(row, 'items_drawings', 'strokes', where, carried)
         if complaint:
-            carried.unparsed['strokes'] = strokes
             strokes = []
         return DrawItem(strokes=strokes or [], **common)
 
     def _apply_metadata(self, scene: Scene, metadata) -> None:
-        rectangle, complaint = self.value(metadata.get('scene_rect'), values.read_rect,
-                                          'metadata', 'scene_rect')
+        rectangle, complaint = self.value(metadata, 'metadata', 'scene_rect', 'metadata')
         if isinstance(rectangle, tuple) and not complaint:
             x, y, width, height = rectangle
             scene.canvas = (x, y, x + width, y + height)
-        view, complaint = self.value(metadata.get('view_transform'),
-                                     values.read_transform, 'metadata', 'view_transform')
+        view, complaint = self.value(metadata, 'metadata', 'view_transform', 'metadata')
         zoom = view.m11 if isinstance(view, Transform) and not complaint else 1.0
         scene.view = View(
             zoom=zoom,

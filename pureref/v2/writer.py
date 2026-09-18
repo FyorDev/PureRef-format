@@ -13,8 +13,8 @@ from typing import cast
 from ..model import (NOTE_STYLES, VERSION_2_0, VERSION_2_1, DrawItem, GroupItem,
                      ImageItem, Item, NoteItem, Scene)
 from ..problems import Unparsed
-from ..qt import big_rational_cell, rect_cell, size_cell, transform_cell
-from . import schema, values
+from ..model import Transform
+from . import cells, schema
 from .database import Database
 from .envelope import Envelope, wrap
 
@@ -83,15 +83,14 @@ def _write_items(db: Database, scene: Scene, resources) -> None:
     ids = _assign_ids(scene)
     for parent, siblings in _sibling_groups(scene):
         for index, item in enumerate(siblings):
-            kept = _unparsed(item)
             db.insert('items',
                       id=ids[id(item)],
                       parent=-1 if parent is None else ids[id(parent)],
                       name=item.name,
-                      transform=kept.get('transform',
-                                         transform_cell(item.transform.to_matrix9())),
-                      sort_order=kept.get('sort_order', big_rational_cell(
-                          item.order if item.order is not None else index + 1)),
+                      transform=_cell(item, 'items', 'transform', item.transform),
+                      sort_order=_cell(item, 'items', 'sort_order',
+                                       item.order if item.order is not None
+                                       else index + 1),
                       z=float(ids[id(item)] + 1 if item.z is None else item.z),
                       opacity=float(item.opacity),
                       locked=int(bool(item.locked)),
@@ -103,13 +102,12 @@ def _write_subtype(db: Database, item: Item, item_id: int, resources) -> None:
     # Columns the reader kept on `item.v2` but this package does not model are
     # not written back: PureRef drops unknown columns on its own next save anyway.
     # Values it could not interpret *are* written back, exactly as they arrived.
-    kept = _unparsed(item)
     if isinstance(item, ImageItem):
         db.insert('items_images', id=item_id,
                   image=resources[item.resource.identity()],
-                  image_transform=kept.get(
-                      'image_transform', transform_cell(item.pixel_transform.to_matrix9())),
-                  image_bounds=kept.get('image_bounds', item.bounds.cell()),
+                  image_transform=_cell(item, 'items_images', 'image_transform',
+                                        item.pixel_transform),
+                  image_bounds=_cell(item, 'items_images', 'image_bounds', item.bounds),
                   flags=int(item.flags),
                   playback_state=int(item.playback.state),
                   playback_frame=int(item.playback.frame),
@@ -119,7 +117,7 @@ def _write_subtype(db: Database, item: Item, item_id: int, resources) -> None:
                   text=item.html if item.html is not None else note_html(item),
                   text_color=item.text_color,
                   background_color=item.background_color or '',
-                  fixed_size=kept.get('fixed_size', size_cell(*item.fixed_size)),
+                  fixed_size=_cell(item, 'items_notes', 'fixed_size', item.fixed_size),
                   style=NOTE_STYLES[item.style])
     elif isinstance(item, GroupItem):
         db.insert('items_groups', id=item_id,
@@ -127,7 +125,7 @@ def _write_subtype(db: Database, item: Item, item_id: int, resources) -> None:
                   lock_mode=int(item.lock_mode))
     elif isinstance(item, DrawItem):
         db.insert('items_drawings', id=item_id,
-                  strokes=kept.get('strokes', values.strokes_cell(item.strokes)))
+                  strokes=_cell(item, 'items_drawings', 'strokes', item.strokes))
 
 
 def _write_metadata(db: Database, scene: Scene, envelope: Envelope,
@@ -138,8 +136,8 @@ def _write_metadata(db: Database, scene: Scene, envelope: Envelope,
         id=0,
         application_version=envelope.application_version,
         scene_rect=_scene_rect(scene, scene_rect, kept.get('scene_rect')),
-        view_transform=transform_cell([scene.view.zoom, 0.0, 0.0,
-                                       0.0, scene.view.zoom, 0.0, 0.0, 0.0, 1.0]),
+        view_transform=cells.encode('metadata', 'view_transform',
+                                    Transform(scene.view.zoom, 0.0, 0.0, scene.view.zoom)),
         horizontal_scroll=int(scene.view.x),
         vertical_scroll=int(scene.view.y),
         thumbnail=envelope.thumbnail or None,
@@ -154,14 +152,19 @@ def _scene_rect(scene: Scene, explicit, stored):
     if rectangle is None:
         return stored
     x0, y0, x1, y1 = rectangle
-    return rect_cell(x0, y0, x1 - x0, y1 - y0)
+    return cells.encode('metadata', 'scene_rect', (x0, y0, x1 - x0, y1 - y0))
 
 
-def _unparsed(item: Item) -> dict[str, str]:
-    """The cells a reader could not interpret, ready to be written back."""
-    return {column: value.cell for column, value
-            in (getattr(item.v2, 'unparsed', None) or {}).items()
-            if isinstance(value, Unparsed)}
+def _cell(item: Item, table: str, column: str, value):
+    """What goes into a serialized column.
+
+    A cell the reader could not interpret goes back exactly as it arrived; every
+    other value is encoded through `cells.py`, which is also what read it.
+    """
+    kept = (getattr(item.v2, 'unparsed', None) or {}).get(column)
+    if isinstance(kept, Unparsed):
+        return kept.cell
+    return cells.encode(table, column, value)
 
 
 def _assign_ids(scene: Scene) -> dict[int, int]:

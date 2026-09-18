@@ -18,18 +18,24 @@ from pathlib import Path
 
 from pureref.records import Record
 from pureref.v1 import records as v1
+from pureref.v2 import cells, schema
 
 ROOT = Path(__file__).resolve().parent.parent
 BEGIN = '<!-- generated: {name} -->'
 END = '<!-- end generated -->'
 
-# document -> section name -> (record, whether the fields sit at fixed offsets)
+# document -> section name -> what to render there. A 1.x section is a record
+# declaration plus whether its fields sit at fixed offsets; a 2.x section is the
+# name of a table in the schema.
 DOCUMENTS = {
     'docs/format-v1.md': {
         'header': (v1.HEADER, True),
         'image-item': (v1.IMAGE_ITEM, False),
         'note-item': (v1.NOTE_ITEM, False),
         'reference': (v1.REFERENCE, True),
+    },
+    'docs/format-v2.md': {
+        'columns': None,        # every table, from pureref/v2/schema.py
     },
 }
 
@@ -58,13 +64,30 @@ def table(record: Record, offsets: bool) -> str:
     return '\n'.join(lines)
 
 
+def schema_tables() -> str:
+    """Every column of the 2.x schema, with what it holds."""
+    blocks = []
+    for name in schema.TABLES:
+        rows = []
+        for column in schema.columns(name):
+            declared = schema.declaration(name, column).split(' ', 1)[1]
+            entry = cells.CELLS.get(name, {}).get(column)
+            serialized = f'`{entry.doc}`' if entry is not None else '—'
+            rows.append(f'| `{column}` | {declared} | {serialized} | '
+                        f'{schema.note(name, column)} |')
+        blocks.append(f'### `{name}`\n\n| Column | Declared | Serialized | Holds |\n'
+                      '|---|---|---|---|\n' + '\n'.join(rows))
+    return '\n\n'.join(blocks)
+
+
 def rewrite(text: str, sections: dict) -> str:
     """Replace every marked region; anything else in the document is kept."""
-    for name, (record, offsets) in sections.items():
+    for name, section in sections.items():
         begin = BEGIN.format(name=name)
         start = text.index(begin) + len(begin)
         end = text.index(END, start)
-        text = text[:start] + '\n' + table(record, offsets) + '\n' + text[end:]
+        body = schema_tables() if section is None else table(*section)
+        text = text[:start] + '\n' + body + '\n' + text[end:]
     return text
 
 
