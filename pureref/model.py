@@ -18,6 +18,7 @@ from math import cos, radians, sin
 from pathlib import Path as FilePath
 
 from . import imagesize
+from .problems import Loss, Problem
 from .qt import Path
 
 # Version tags accepted by the writers; `latest` resolves to the newest one.
@@ -357,6 +358,9 @@ class Scene:
     canvas: tuple[float, float, float, float] = (-10000.0, -10000.0, 10000.0, 10000.0)
     view: View = field(default_factory=View)
     source_version: str | None = None
+    # What a reader could not interpret; empty for a file this package fully
+    # understands. Reading never raises for these.
+    problems: list[Problem] = field(default_factory=list)
     extras: dict = field(default_factory=dict)
 
     # --- construction ---------------------------------------------------------
@@ -510,32 +514,38 @@ class Scene:
             raise ValueError(f'Unknown version {version!r}; expected one of {VERSIONS}')
         if version == VERSION_2_0:
             preview = getattr(self.extras.get('v2', {}).get('envelope'), 'thumbnail', b'')
-            return ['the preview image: the 2.0 header has no thumbnail field'] \
-                if preview else []
+            return [Loss('thumbnail', 'the preview image: the 2.0 header has no '
+                         'thumbnail field')] if preview else []
         if version != VERSION_1:
             return []
         reasons = []
         if self.groups:
-            reasons.append(f'{len(self.groups)} group(s): 1.x has no groups, '
-                           'their children move to the canvas')
+            reasons.append(Loss('groups', f'{len(self.groups)} group(s): 1.x has no '
+                                'groups, their children move to the canvas'))
         if self.drawings:
-            reasons.append(f'{len(self.drawings)} drawing(s): 1.x has no drawings')
+            reasons.append(Loss('drawings',
+                                f'{len(self.drawings)} drawing(s): 1.x has no drawings'))
         if any(item.flags != RENDER_SMOOTH for item in self.images):
-            reasons.append('render flags (bilinear/grayscale): not stored by 1.x')
+            reasons.append(Loss('render-flags',
+                                'render flags (bilinear/grayscale): not stored by 1.x'))
         if any(item.playback.state != PLAYBACK_STATIC for item in self.images):
-            reasons.append('animation playback state: not stored by 1.x')
+            reasons.append(Loss('playback',
+                                'animation playback state: not stored by 1.x'))
         if any(note.opacity != 1.0 for note in self.notes):
-            reasons.append("note opacity: 1.x keeps a note's alpha in its text colour")
+            reasons.append(Loss('note-opacity',
+                                "note opacity: 1.x keeps a note's alpha in its text colour"))
         if any(item.resource.linked for item in self.images):
-            reasons.append('linked images: 1.x stores a link, but PureRef 1.x resolves it '
-                           'and embeds the file on its next save')
+            reasons.append(Loss('linked-images',
+                                'linked images: 1.x stores a link, but PureRef 1.x '
+                                'resolves it and embeds the file on its next save'))
         if any(note.html for note in self.notes):
-            reasons.append('note HTML: 1.x notes are plain text')
+            reasons.append(Loss('note-html', 'note HTML: 1.x notes are plain text'))
         if any(item.comment for item in self.walk()):
-            reasons.append('item comments: 1.x has no comment field')
+            reasons.append(Loss('comments', 'item comments: 1.x has no comment field'))
         formats = {item.resource.format.upper() for item in self.images
                    if not item.resource.linked} - {'PNG'}
         if formats:
-            reasons.append(f'{", ".join(sorted(formats))} image data: '
-                           're-encoded as PNG, which 1.x is limited to')
+            reasons.append(Loss('image-format',
+                                f'{", ".join(sorted(formats))} image data: re-encoded '
+                                'as PNG, which 1.x is limited to'))
         return reasons

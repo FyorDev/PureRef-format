@@ -20,6 +20,7 @@ from .model import (LATEST, LOCK_CLOSED, LOCK_OPEN, NOTE_COMFORTABLE, NOTE_COMPA
                     RENDER_GRAYSCALE, RENDER_SMOOTH, VERSION_1, VERSION_2_0, VERSION_2_1,
                     VERSIONS, DrawItem, GroupItem, ImageItem, Item, NoteItem, Playback,
                     Resource, Scene, Stroke, Transform, View)
+from .problems import Loss, Problem, Unparsed
 from .qt import FormatError, Path as CropPath
 from . import layout, report, transcode, v1, v2
 
@@ -28,6 +29,7 @@ __all__ = [
     'layout', 'report', 'transcode', 'v1', 'v2',
     'Scene', 'Item', 'ImageItem', 'NoteItem', 'GroupItem', 'DrawItem', 'Resource',
     'Stroke', 'Transform', 'View', 'Playback', 'CropPath', 'FormatError',
+    'Loss', 'Problem', 'Unparsed',
     'VERSIONS', 'VERSION_1', 'VERSION_2_0', 'VERSION_2_1', 'LATEST',
     'RENDER_SMOOTH', 'RENDER_GRAYSCALE', 'PLAYBACK_STATIC', 'PLAYBACK_STOPPED',
     'PLAYBACK_PAUSED', 'PLAYBACK_PLAYING', 'LOCK_OPEN', 'LOCK_CLOSED',

@@ -21,6 +21,8 @@ def summary(scene: Scene) -> dict:
         },
         'resources': [_resource(resource) for resource in scene.resources],
         'items': [_item(item) for item in scene.items],
+        'problems': [{'code': problem.code, 'detail': str(problem)}
+                     for problem in scene.problems],
     }
     report.update(_provenance(scene))
     return report
@@ -129,6 +131,8 @@ def text_report(scene: Scene) -> str:
         size = 'linked' if resource['linked'] else f'{resource["bytes"]} bytes'
         lines.append(f'  image {resource["width"]}x{resource["height"]} '
                      f'{resource["format"]}, {size}: {where}')
+    for problem in data['problems']:
+        lines.append(f'  problem ({problem["code"]}): {problem["detail"]}')
     lines.extend(_item_lines(data['items'], 1))
     return '\n'.join(lines)
 

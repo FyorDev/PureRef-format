@@ -77,9 +77,31 @@ from pureref.layout import pack_rows
 pack_rows(scene.images, target_width=1000)   # rows that line up exactly
 ```
 
-Anything a reader did not interpret — unknown header bytes, columns a future
-PureRef adds, the stroke option bytes nobody has decoded — is kept in
-`item.extras` and written back, so reading and saving a file does not degrade it.
+Anything a reader did not interpret is kept and written back, so reading and
+saving a file does not degrade it. Reading never fails over one unfamiliar value:
+a serialized type this package does not know becomes an `Unparsed` value, noted
+on the scene and restored byte for byte when you save.
+
+```python
+>>> scene = pureref.read('from-a-newer-pureref.pur')
+>>> scene.problems
+[Problem('unparsed-value', "item 3.sort_order: Expected 'BigRational', found 'NewType'")]
+```
+
+When you want the file rather than the interpretation — a column this package has
+never seen, or SQL instead of model objects — the 2.x document layer hands it
+over, and the writer takes an edit hook for the same reason:
+
+```python
+from pureref.v2 import Document
+
+with Document.read('board.pur') as document:
+    document.rows('items')        # dicts, values exactly as stored
+    document.database             # the inner SQLite bytes
+    document.repack()             # and back to the original bytes
+
+pureref.write_bytes(scene, edit=lambda db: db.connection.execute(...))
+```
 
 ## Command line
 

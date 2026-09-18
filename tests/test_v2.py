@@ -8,6 +8,7 @@ from pureref import (LOCK_OPEN, PLAYBACK_PAUSED, PLAYBACK_PLAYING, RENDER_GRAYSC
                      RENDER_SMOOTH, STROKE_DASHED, STROKE_FLAT, CropPath, Scene,
                      Stroke)
 from pureref.qt import FormatError
+from pureref.v2 import Document
 from pureref.v2 import envelope as env
 from pureref.v2 import schema
 from pureref.v2.database import Database
@@ -185,6 +186,83 @@ class CommentTests(unittest.TestCase):
         self.assertIn('item comments: 1.x has no comment field', scene.losses('1.10'))
 
 
+class UnknownValueTests(unittest.TestCase):
+    """A type this package does not know must not cost the whole file."""
+
+    def craft(self, column: str, cell) -> bytes:
+        scene = Scene()
+        scene.add_image(FIXTURES / 'red.png', x=10, y=20)
+        scene.add_note('a note')
+        envelope_, database = env.unwrap(pureref.write_bytes(scene))
+        with Database(database) as db:
+            db.connection.execute(f'UPDATE items SET {column}=? WHERE id=0', (cell,))
+            db.connection.commit()
+            return env.wrap(db.to_bytes(), envelope_)
+
+    def test_a_future_type_is_kept_not_raised(self):
+        from pureref.qt import TYPE_CUSTOM, variant_cell
+        future = variant_cell(TYPE_CUSTOM, b'\x01\x02\x03\x04', 'FutureType')
+        scene = pureref.read_bytes(self.craft('sort_order', future))
+        self.assertEqual([problem.code for problem in scene.problems], ['unparsed-value'])
+        self.assertIn('FutureType', str(scene.problems[0]))
+        # the rest of the file is intact
+        self.assertEqual(len(scene.images), 1)
+        self.assertEqual((scene.images[0].x, scene.images[0].y), (10.0, 20.0))
+        self.assertEqual(scene.notes[0].text, 'a note')
+
+    def test_an_unparsed_cell_is_written_back_byte_for_byte(self):
+        from pureref.qt import TYPE_CUSTOM, cell_to_bytes, variant_cell
+        future = variant_cell(TYPE_CUSTOM, b'\x01\x02\x03\x04', 'FutureType')
+        scene = pureref.read_bytes(self.craft('sort_order', future))
+        _, database = env.unwrap(pureref.write_bytes(scene))
+        with Database(database, read_only=True) as db:
+            again = {row['id']: row['sort_order'] for row in db.rows('items')}
+        self.assertEqual(cell_to_bytes(again[0]), cell_to_bytes(future))
+
+    def test_garbage_in_a_cell_is_a_problem_not_a_crash(self):
+        scene = pureref.read_bytes(self.craft('transform', 'not a variant at all'))
+        self.assertTrue(scene.problems)
+        self.assertEqual(scene.images[0].transform.to_matrix9(),
+                         pureref.Transform().to_matrix9())
+
+    def test_a_clean_file_has_no_problems(self):
+        for name in APP_FILES:
+            with self.subTest(name=name):
+                self.assertEqual(pureref.read(FIXTURES / f'{name}.pur').problems, [])
+
+
+class DocumentTests(unittest.TestCase):
+    """The raw view: rows and database bytes, with nothing interpreted."""
+
+    def test_rows_and_database_are_reachable(self):
+        with Document.read(FIXTURES / 'app-2.0.3-mixed.pur') as document:
+            self.assertEqual(document.envelope.format_version, '2.1')
+            self.assertTrue(document.database.startswith(b'SQLite format 3\0'))
+            self.assertEqual(len(document.rows('items')), 5)
+            self.assertEqual(document.integrity(), ['ok'])
+            self.assertEqual(document.user_version(), 200101)
+            self.assertEqual(document.missing_columns(), {})
+            self.assertEqual(document.unknown_tables(), [])
+            scene = document.to_scene()
+        self.assertEqual(len(scene.images), 2)
+
+    def test_repacking_a_document_reproduces_the_file(self):
+        data = (FIXTURES / 'app-2.0.3-image.pur').read_bytes()
+        with Document.open(data) as document:
+            self.assertEqual(document.repack(), data)
+
+    def test_the_writer_takes_an_edit_hook(self):
+        scene = Scene()
+        scene.add_image(FIXTURES / 'red.png')
+
+        def edit(db):
+            db.connection.execute("UPDATE items SET name='edited'")
+            db.connection.commit()
+
+        again = pureref.read_bytes(pureref.write_bytes(scene, edit=edit))
+        self.assertEqual(again.images[0].name, 'edited')
+
+
 class MalformedTests(unittest.TestCase):
     def build(self, rows):
         from pureref.qt import big_rational_cell, transform_cell
@@ -219,7 +297,7 @@ class MalformedTests(unittest.TestCase):
         self.assertEqual(scene.items[0].name, 'bare')
         self.assertTrue(scene.items[0].extras['v2']['orphan'])
 
-    def test_an_image_item_without_its_resource_is_an_error(self):
+    def test_an_image_item_without_its_resource_is_reported(self):
         from pureref.qt import transform_cell
         with Database(pragmas=schema.PRAGMAS) as db:
             schema.create(db.connection)
@@ -231,8 +309,10 @@ class MalformedTests(unittest.TestCase):
                       playback_state=0, image_transform=None, image_bounds=None,
                       playback_frame=0, flags=1)
             data = env.wrap(db.to_bytes())
-        with self.assertRaises(FormatError):
-            pureref.read_bytes(data)
+        scene = pureref.read_bytes(data)
+        self.assertEqual(len(scene.images), 1)
+        self.assertEqual([problem.code for problem in scene.problems], ['missing-image'])
+        self.assertIn('item 0', str(scene.problems[0]))
 
 
 class WriteTests(unittest.TestCase):

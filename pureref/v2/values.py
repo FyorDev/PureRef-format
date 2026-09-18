@@ -11,9 +11,10 @@ import struct
 from fractions import Fraction
 
 from ..model import STROKE_ROUND, Stroke, Transform
+from ..problems import Unparsed
 from ..qt import (TYPE_CUSTOM, TYPE_RECTF, TYPE_SIZEF, TYPE_TRANSFORM, Cursor,
-                  FormatError, Path, cell_to_bytes, read_big_rational, read_variant_header,
-                  variant_cell)
+                  FormatError, Path, bytes_to_cell, cell_to_bytes, read_big_rational,
+                  read_variant_header, variant_cell)
 
 STROKE_TYPE_NAME = 'QList<GraphicsDrawItem::Stroke>'
 # Each stroke starts with a signed-char version. From 100 on, a trailing style
@@ -23,6 +24,30 @@ STROKE_TYPE_NAME = 'QList<GraphicsDrawItem::Stroke>'
 STROKE_VERSION = 100
 STROKE_LEGACY_LIMIT = 99
 COLOR_SPEC_RGB = 1
+
+
+def decode(cell, reader):
+    """Read one cell, or keep it verbatim when its type is not understood.
+
+    Returns `(value, complaint)`. A complaint means the value is an `Unparsed`
+    carrying the original cell, so a writer can put the bytes back untouched and
+    a future PureRef type costs nothing worse than a note on the scene.
+    """
+    try:
+        return reader(cell), None
+    except (FormatError, ValueError, struct.error) as error:
+        return unparsed(cell), str(error)
+
+
+def unparsed(cell) -> Unparsed:
+    payload = cell_to_bytes(cell)
+    type_id, type_name = -1, None
+    try:
+        type_id, _is_null, type_name = read_variant_header(Cursor(payload))
+    except FormatError:
+        pass
+    text = cell if isinstance(cell, str) else bytes_to_cell(payload)
+    return Unparsed(type_id, type_name, payload, text)
 
 
 def _open(cell, expected_id: int | None = None, expected_name: str | None = None):

@@ -106,6 +106,8 @@ def _info(args) -> int:
     scene = read(args.file)
     print(json.dumps(summary(scene), indent=2, default=str) if args.json
           else text_report(scene))
+    for problem in scene.problems:
+        print(f'note: {problem}', file=sys.stderr)
     return 0
 
 

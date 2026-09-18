@@ -11,7 +11,8 @@ import html as html_module
 
 from ..model import (NOTE_STYLES, VERSION_2_0, VERSION_2_1, DrawItem, GroupItem,
                      ImageItem, Item, NoteItem, Scene)
-from ..qt import rect_cell, size_cell, transform_cell, big_rational_cell
+from ..problems import Unparsed
+from ..qt import big_rational_cell, rect_cell, size_cell, transform_cell
 from . import schema, values
 from .database import Database
 from .envelope import Envelope, wrap
@@ -24,7 +25,8 @@ DEFAULT_NOTE_COLOR = '#eaeaea'
 
 def write(scene: Scene, *, format_version: str = VERSION_2_1,
           application_version: str | None = None, thumbnail: bytes | None = None,
-          scene_rect: tuple[float, float, float, float] | None = None) -> bytes:
+          scene_rect: tuple[float, float, float, float] | None = None,
+          edit=None) -> bytes:
     """Serialize `scene`.
 
     `thumbnail` is optional JPEG or PNG preview bytes. `scene_rect` is the canvas
@@ -32,6 +34,10 @@ def write(scene: Scene, *, format_version: str = VERSION_2_1,
     and anything else is left empty, which makes PureRef compute the framing. A
     1.x canvas is deliberately not reused here: there it is the scrollable area,
     not the content rectangle 2.x stores.
+
+    `edit` is called with the open `Database` once every row is in place, for
+    anything this package does not model — the escape hatch that keeps SQL an
+    option without making it the interface.
     """
     previous = scene.extras.get('v2', {})
     stored = previous.get('envelope')
@@ -51,6 +57,8 @@ def write(scene: Scene, *, format_version: str = VERSION_2_1,
         resources = _write_resources(db, scene)
         _write_items(db, scene, resources)
         _write_metadata(db, scene, envelope, scene_rect)
+        if edit is not None:
+            edit(db)
         database = db.to_bytes()
     return wrap(database, envelope)
 
@@ -75,13 +83,15 @@ def _write_items(db: Database, scene: Scene, resources) -> None:
     ids = _assign_ids(scene)
     for parent, siblings in _sibling_groups(scene):
         for index, item in enumerate(siblings):
+            kept = _unparsed(item)
             db.insert('items',
                       id=ids[id(item)],
                       parent=-1 if parent is None else ids[id(parent)],
                       name=item.name,
-                      transform=transform_cell(item.transform.to_matrix9()),
-                      sort_order=big_rational_cell(
-                          item.order if item.order is not None else index + 1),
+                      transform=kept.get('transform',
+                                         transform_cell(item.transform.to_matrix9())),
+                      sort_order=kept.get('sort_order', big_rational_cell(
+                          item.order if item.order is not None else index + 1)),
                       z=float(ids[id(item)] + 1 if item.z is None else item.z),
                       opacity=float(item.opacity),
                       locked=int(bool(item.locked)),
@@ -92,11 +102,14 @@ def _write_items(db: Database, scene: Scene, resources) -> None:
 def _write_subtype(db: Database, item: Item, item_id: int, resources) -> None:
     # Columns the reader kept in `extras` but this package does not model are not
     # written back: PureRef drops unknown columns on its own next save anyway.
+    # Values it could not interpret *are* written back, exactly as they arrived.
+    kept = _unparsed(item)
     if isinstance(item, ImageItem):
         db.insert('items_images', id=item_id,
                   image=resources[item.resource.identity()],
-                  image_transform=transform_cell(item.pixel_transform.to_matrix9()),
-                  image_bounds=item.bounds.cell(),
+                  image_transform=kept.get(
+                      'image_transform', transform_cell(item.pixel_transform.to_matrix9())),
+                  image_bounds=kept.get('image_bounds', item.bounds.cell()),
                   flags=int(item.flags),
                   playback_state=int(item.playback.state),
                   playback_frame=int(item.playback.frame),
@@ -106,7 +119,7 @@ def _write_subtype(db: Database, item: Item, item_id: int, resources) -> None:
                   text=item.html if item.html is not None else note_html(item),
                   text_color=item.text_color,
                   background_color=item.background_color or '',
-                  fixed_size=size_cell(*item.fixed_size),
+                  fixed_size=kept.get('fixed_size', size_cell(*item.fixed_size)),
                   style=NOTE_STYLES[item.style])
     elif isinstance(item, GroupItem):
         db.insert('items_groups', id=item_id,
@@ -114,7 +127,7 @@ def _write_subtype(db: Database, item: Item, item_id: int, resources) -> None:
                   lock_mode=int(item.lock_mode))
     elif isinstance(item, DrawItem):
         db.insert('items_drawings', id=item_id,
-                  strokes=values.strokes_cell(item.strokes))
+                  strokes=kept.get('strokes', values.strokes_cell(item.strokes)))
 
 
 def _write_metadata(db: Database, scene: Scene, envelope: Envelope,
@@ -142,6 +155,13 @@ def _scene_rect(scene: Scene, explicit, stored):
         return stored
     x0, y0, x1, y1 = rectangle
     return rect_cell(x0, y0, x1 - x0, y1 - y0)
+
+
+def _unparsed(item: Item) -> dict[str, str]:
+    """The cells a reader could not interpret, ready to be written back."""
+    return {column: value.cell for column, value
+            in item.extras.get('v2', {}).get('unparsed', {}).items()
+            if isinstance(value, Unparsed)}
 
 
 def _assign_ids(scene: Scene) -> dict[int, int]:
