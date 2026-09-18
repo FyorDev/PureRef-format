@@ -21,7 +21,7 @@ from ..records import (F64, I8, I32, U16, U32, U64, Codec, Field, Matrix6,
 COLOUR = Tuple('H', 3, 'three uint16 channels')
 
 
-class Outline(Codec):
+class CropOutline(Codec):
     """The crop outline: a count, then a kind and a point per corner.
 
     Closed, and in centred pixel coordinates — an uncropped 64x32 image spans
@@ -95,9 +95,9 @@ IMAGE_ITEM = Record('image item', [
     Field('opacity', F64, default=1.0,
           doc='1.0 when opaque; PureRef stores it as a float'),
     Field('linear', Matrix6, default=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0),
-          doc='the transform’s linear part; m13 and m23 are rewritten as 0'),
+          doc='the linear part of the transform; m13 and m23 are rewritten as 0'),
     Field('position', PointF, default=(0.0, 0.0),
-          doc='the image’s centre on the canvas'),
+          doc='the image centre on the canvas'),
     Field('_constant_one', F64, default=1.0,
           doc='rewritten as 1.0 whatever it held'),
     Field('id', U32, default=0, doc='item id'),
@@ -106,7 +106,7 @@ IMAGE_ITEM = Record('image item', [
           doc='the transform before cropping, for "reset cropping"'),
     Field('crop_offset', PointF, default=(0.0, 0.0), doc='crop offset'),
     Field('crop_scale', F64, default=1.0, doc='crop scale'),
-    Field('bounds', Outline(), default=None,
+    Field('bounds', CropOutline(), default=None,
           doc='the crop outline, closed, in centred pixel coordinates'),
     Field('_tail', Raw(21),
           doc='PureRef writes 0.0, 1, 0, 2000, 2000; kept, no observed effect'),
@@ -116,7 +116,7 @@ IMAGE_ITEM = Record('image item', [
 NOTE_ITEM = Record('note item', [
     Field('text', Utf16String(), default='', doc='plain text, not HTML'),
     Field('linear', Matrix6, default=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0),
-          doc='the transform’s linear part'),
+          doc='the linear part of the transform'),
     Field('position', PointF, default=(0.0, 0.0), doc='position on the canvas'),
     Field('_constant_one', F64, default=1.0,
           doc='rewritten as 1.0 whatever it held'),
@@ -128,7 +128,7 @@ NOTE_ITEM = Record('note item', [
           doc='red green blue, or hue saturation value when the kind is 2'),
     Field('_colour_gap', Raw(2), doc='zero in every observed file'),
     Field('background_kind', I8, default=1, doc='1 = RGB, 2 = HSV'),
-    Field('background_opacity', U16, default=5000, doc='PureRef’s default'),
+    Field('background_opacity', U16, default=5000, doc='16-bit alpha; PureRef defaults to 5000'),
     Field('background_rgb', COLOUR, default=(0, 0, 0), doc='background channels'),
     Field('_tail', Raw(2),
           doc='zero in every observed file, and it belongs before the count'),

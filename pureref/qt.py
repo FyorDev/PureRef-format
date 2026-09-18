@@ -209,13 +209,35 @@ class Path:
     fill_rule: int = 0
 
     @classmethod
-    def rectangle(cls, x0: float, y0: float, x1: float, y1: float) -> 'Path':
+    def rectangle(cls, x0: float, y0: float, x1: float, y1: float) -> Path:
         return cls([(MOVE_TO, x0, y0), (LINE_TO, x1, y0), (LINE_TO, x1, y1),
                     (LINE_TO, x0, y1), (LINE_TO, x0, y0)])
 
     @classmethod
-    def centered_rectangle(cls, width: float, height: float) -> 'Path':
+    def centered_rectangle(cls, width: float, height: float) -> Path:
         return cls.rectangle(-width / 2, -height / 2, width / 2, height / 2)
+
+    @classmethod
+    def line(cls, x0: float, y0: float, x1: float, y1: float) -> Path:
+        """A single segment, which is what a straight stroke is."""
+        return cls([(MOVE_TO, x0, y0), (LINE_TO, x1, y1)])
+
+    @classmethod
+    def polyline(cls, points) -> Path:
+        """An open path through `points`, the shape a freehand stroke has."""
+        points = [(float(x), float(y)) for x, y in points]
+        if not points:
+            return cls()
+        head, *rest = points
+        return cls([(MOVE_TO, *head)] + [(LINE_TO, x, y) for x, y in rest])
+
+    @classmethod
+    def polygon(cls, points) -> Path:
+        """A closed path through `points`, the shape a crop outline has."""
+        points = [(float(x), float(y)) for x, y in points]
+        if points and points[0] != points[-1]:
+            points.append(points[0])
+        return cls.polyline(points)
 
     @property
     def points(self) -> list[tuple[float, float]]:
@@ -240,7 +262,7 @@ class Path:
         return variant_cell(TYPE_CUSTOM, self.pack(), 'QPainterPath')
 
     @classmethod
-    def read(cls, cursor: Cursor) -> 'Path':
+    def read(cls, cursor: Cursor) -> Path:
         count = cursor.read('I')
         if count > cursor.remaining // 20:
             raise FormatError('Implausible QPainterPath element count')

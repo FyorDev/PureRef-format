@@ -98,7 +98,7 @@ class LayoutTests(unittest.TestCase):
     def test_the_outline_rejects_an_implausible_count(self):
         import struct
         with self.assertRaises(FormatError):
-            v1.Outline().read(Cursor(struct.pack('>I', 0x7FFFFFFF)))
+            v1.CropOutline().read(Cursor(struct.pack('>I', 0x7FFFFFFF)))
 
 
 if __name__ == '__main__':

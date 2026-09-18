@@ -167,7 +167,7 @@ def _extract(args) -> int:
             continue
         suffix = resource.format.lower()
         target = directory / f'image-{index}.{suffix if suffix.isalnum() else "bin"}'
-        target.write_bytes(resource.data)
+        target.write_bytes(resource.data or b'')
         written += 1
     print(f'{written} image(s) written to {directory}')
     return 0

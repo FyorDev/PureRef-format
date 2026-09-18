@@ -5,7 +5,7 @@ from pathlib import Path as FilePath
 
 import pureref
 from pureref import (LOCK_OPEN, PLAYBACK_PAUSED, PLAYBACK_PLAYING, RENDER_GRAYSCALE,
-                     RENDER_SMOOTH, STROKE_DASHED, STROKE_FLAT, CropPath, Scene,
+                     RENDER_SMOOTH, STROKE_DASHED, STROKE_FLAT, Outline, Scene,
                      Stroke)
 from pureref.qt import FormatError
 from pureref.v2 import Document
@@ -130,7 +130,7 @@ class StrokeTests(unittest.TestCase):
     def test_styles_and_point_round_trip(self):
         scene = Scene()
         for style in (0, STROKE_DASHED, STROKE_FLAT, 7):
-            scene.add_drawing([Stroke(path=CropPath([(0, 0, 0), (1, 10, 0)]),
+            scene.add_drawing([Stroke(path=Outline([(0, 0, 0), (1, 10, 0)]),
                                       style=style, point=(1.5, -2.5))])
         again = pureref.read_bytes(pureref.write_bytes(scene))
         self.assertEqual([item.strokes[0].style for item in again.drawings],
@@ -295,7 +295,7 @@ class MalformedTests(unittest.TestCase):
             data = env.wrap(db.to_bytes())
         scene = pureref.read_bytes(data)
         self.assertEqual(scene.items[0].name, 'bare')
-        self.assertTrue(scene.items[0].extras['v2']['orphan'])
+        self.assertTrue(scene.items[0].v2.orphan)
 
     def test_an_image_item_without_its_resource_is_reported(self):
         from pureref.qt import transform_cell
@@ -332,7 +332,7 @@ class WriteTests(unittest.TestCase):
         animated.playback.frame = 1
         scene.add_note('Ω 中', parent=group, x=0, y=-150, text_color='#ff40ff',
                        background_color='#80304050', style='compact')
-        scene.add_drawing([Stroke(path=CropPath([(0, 0, 0), (1, 200, 100)]),
+        scene.add_drawing([Stroke(path=Outline([(0, 0, 0), (1, 200, 100)]),
                                   rgba=(250, 160, 50, 255), width=4, style=STROKE_DASHED)],
                           parent=group)
         return scene

@@ -3,13 +3,13 @@
 The layouts live in `records.py`; this module only walks the file's sections and
 maps the values onto the model. Nothing is consumed destructively, so the offsets
 in the header and in the reference table can be used directly, and anything not
-modelled is kept on `item.legacy` so a save reproduces the file.
+modelled is kept on `item.v1` so a save reproduces the file.
 """
 from __future__ import annotations
 
 from .. import imagesize
-from ..model import (VERSION_1, ImageItem, Item, Legacy1xFile, Legacy1xImage,
-                     Legacy1xNote, NoteItem, Resource, Scene, Transform, View)
+from ..model import (VERSION_1, ImageItem, Item, V1File, V1Image,
+                     V1Note, NoteItem, Resource, Scene, Transform, View)
 from ..qt import Cursor, FormatError
 from . import format as fmt
 from .records import HEADER, IMAGE_ITEM, NOTE_ITEM, REFERENCE
@@ -93,27 +93,36 @@ def _read_items(blob: bytes, header: dict, start: int) -> dict:
     roots: list[Item] = []
     images: list[tuple[int, ImageItem]] = []
     while cursor.pos < limit and _looks_like_item(blob, cursor.pos, limit):
-        item = _read_item(cursor, limit)
+        item, values = _read_item(cursor, limit)
         if isinstance(item, ImageItem):
-            images.append((item.legacy.id, item))
+            images.append((values['id'], item))
         roots.append(item)
     folder = cursor.read_string() if cursor.pos < limit else None
     return {'roots': roots, 'images': images, 'folder': folder}
 
 
-def _read_item(cursor: Cursor, limit: int) -> Item:
+def _read_item(cursor: Cursor, limit: int) -> tuple[Item, dict]:
+    """The item and the record it came from, so callers need not re-read fields."""
     end = cursor.read('Q')
     length = cursor.read('I')
     cursor.take(length)                      # the class name, already identified
     record = IMAGE_ITEM if length == fmt.IMAGE_ITEM_MARKER else NOTE_ITEM
     values = record.read(cursor)
-    trailing = cursor.take(end - cursor.pos) if cursor.pos != end else b''
+    values['trailing'] = cursor.take(end - cursor.pos) if cursor.pos != end else b''
     item = (_image_item(values) if record is IMAGE_ITEM else _note_item(values))
-    item.legacy.trailing = trailing
     for _ in range(values['children']):
-        child = _read_item(cursor, limit)
+        child, _ = _read_item(cursor, limit)
         item.children.append(child)
-    return item
+    return item, values
+
+
+def _carrier(item: ImageItem) -> V1Image:
+    """The 1.x data an image item was read with, narrowed to its own type."""
+    stored = item.v1
+    if not isinstance(stored, V1Image):     # only if a caller replaced it
+        stored = V1Image()
+        item.v1 = stored
+    return stored
 
 
 def _transform(values: dict) -> tuple[Transform, tuple[float, float]]:
@@ -127,7 +136,7 @@ def _image_item(values: dict) -> ImageItem:
     before_m11, before_m12, before_m13, before_m21, before_m22, before_m23 = \
         values['before_crop']
     source = values['source']
-    legacy = Legacy1xImage(
+    stored = V1Image(
         source=source,
         brute_force=values['brute_force'],
         before_crop=Transform(before_m11, before_m12, before_m21, before_m22),
@@ -136,10 +145,11 @@ def _image_item(values: dict) -> ImageItem:
         crop_scale=values['crop_scale'],
         perspective=perspective,
         tail=values['_tail'],
+        trailing=values['trailing'],
         id=values['id'])
     return ImageItem(name=values['name'], transform=transform, z=values['z'],
                      opacity=values['opacity'], bounds=values['bounds'],
-                     resource=_placeholder(), legacy=legacy)
+                     resource=_placeholder(), v1=stored)
 
 
 def _note_item(values: dict) -> NoteItem:
@@ -148,15 +158,15 @@ def _note_item(values: dict) -> NoteItem:
                          values['foreground_rgb'])
     background = _colour(values['background_kind'], values['background_opacity'],
                          values['background_rgb'])
-    legacy = Legacy1xNote(
+    stored = V1Note(
         foreground=foreground['colour'], foreground_hsv=foreground['hsv'],
         background=background['colour'], background_hsv=background['hsv'],
-        colour_gap=values['_colour_gap'], tail=values['_tail'], id=values['id'])
-    legacy.perspective = perspective
+        colour_gap=values['_colour_gap'], tail=values['_tail'],
+        trailing=values['trailing'], perspective=perspective, id=values['id'])
     return NoteItem(transform=transform, z=values['z'], text=values['text'],
                     text_color=fmt.color_to_argb(*foreground['colour']),
                     background_color=fmt.color_to_argb(*background['colour']),
-                    legacy=legacy)
+                    v1=stored)
 
 
 def _colour(kind: int, opacity: int, channels) -> dict:
@@ -192,11 +202,12 @@ def _assemble(blob, header: dict, slots, parsed, references) -> Scene:
         if slot is None:
             raise FormatError(f'Image item {item_id} has no usable reference')
         instances.append((item_id, item, slot))
-        item.legacy.address = (slot['start'], slot['end'])
+        stored = _carrier(item)
+        stored.address = (slot['start'], slot['end'])
         if 'data' in slot:
-            owners[item_id] = _resource_for(slot['data'], item)
+            owners[item_id] = _resource_for(slot['data'], item, stored.source)
         elif slot['ref'] == fmt.LINK_SLOT:
-            owners[item_id] = _resource_for(None, item)
+            owners[item_id] = _resource_for(None, item, stored.source)
     for item_id, item, slot in instances:
         resource = owners.get(item_id)
         if resource is None:
@@ -210,7 +221,7 @@ def _assemble(blob, header: dict, slots, parsed, references) -> Scene:
     scene = Scene(items=parsed['roots'], canvas=header['canvas'],
                   view=View(header['zoom'], header['view_x'], header['view_y']),
                   source_version=VERSION_1)
-    scene.legacy = Legacy1xFile(
+    scene.v1 = V1File(
         header=header['bytes'],
         application_version=_text(header['application_version']),
         checksum=_text(header['checksum']),
@@ -219,7 +230,7 @@ def _assemble(blob, header: dict, slots, parsed, references) -> Scene:
     return scene
 
 
-def _resource_for(data: bytes | None, item: ImageItem) -> Resource:
+def _resource_for(data: bytes | None, item: ImageItem, source: str | None) -> Resource:
     """1.x stores no pixel size: read it from the PNG, or fall back to the crop
     outline, which spans the original pixels when nothing was cropped."""
     image_format, width, height = 'PNG', 0, 0
@@ -231,8 +242,7 @@ def _resource_for(data: bytes | None, item: ImageItem) -> Resource:
     if not width or not height:
         x0, y0, x1, y1 = item.bounds.bounding_box()
         width, height = max(1, round(x1 - x0)), max(1, round(y1 - y0))
-    source = item.legacy.source or ''
-    if source == fmt.BRUTE_FORCE_SOURCE:
+    if source in (None, fmt.BRUTE_FORCE_SOURCE):
         source = ''
     return Resource(width, height, data, image_format,
                     source or ('missing' if data is None else ''))

@@ -75,7 +75,7 @@ def unwrap(data: bytes) -> tuple[Envelope, bytes]:
     database = blob[database_size:] + blob[header_size:database_size]
     _check_database(database)
     envelope = Envelope(
-        format_version=version, application_version=application_version,
+        format_version=version, application_version=application_version or '',
         thumbnail=thumbnail, reserved=reserved, checksum=checksum,
         checksum_valid=hashlib.md5(blob[checksum_start:]).hexdigest() == checksum,
         database_size=database_size, header_size=header_size)

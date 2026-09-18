@@ -29,12 +29,12 @@ class Document:
         self._handle = Database(database, read_only=read_only)
 
     @classmethod
-    def open(cls, data: bytes, *, read_only: bool = True) -> 'Document':
+    def open(cls, data: bytes, *, read_only: bool = True) -> Document:
         envelope, database = unwrap(bytes(data))
         return cls(envelope, database, read_only=read_only)
 
     @classmethod
-    def read(cls, path, *, read_only: bool = True) -> 'Document':
+    def read(cls, path, *, read_only: bool = True) -> Document:
         return cls.open(Path(path).read_bytes(), read_only=read_only)
 
     # --- the database as it is ------------------------------------------------
@@ -75,7 +75,7 @@ class Document:
     def close(self) -> None:
         self._handle.close()
 
-    def __enter__(self) -> 'Document':
+    def __enter__(self) -> Document:
         return self
 
     def __exit__(self, *_) -> None:

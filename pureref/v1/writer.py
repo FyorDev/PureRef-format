@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from .. import transcode
 from ..model import (VERSION_1, DrawItem, GroupItem, ImageItem, Item,
-                     Legacy1xImage, Legacy1xNote, NoteItem, Scene, Transform,
+                     V1Image, V1Note, NoteItem, Scene, Transform,
                      _multiply)
 from ..qt import Path, pack_string
 from . import format as fmt
@@ -83,11 +83,11 @@ def _plan(scene: Scene, *, flatten_groups: bool, canvas) -> Plan:
                 ids[id(item)] = next_id
                 next_id += 1
 
-    legacy = scene.legacy
+    stored = scene.v1
     return Plan(scene=scene,
                 canvas=tuple(canvas or _canvas_for(scene)),
-                folder=(legacy.folder if legacy and legacy.folder else ''),
-                header=(legacy.header if legacy else b'') or bytes(fmt.HEADER_SIZE),
+                folder=(stored.folder if stored and stored.folder else ''),
+                header=(stored.header if stored else b'') or bytes(fmt.HEADER_SIZE),
                 images=images, notes=notes, resources=order, owners=owners, ids=ids)
 
 
@@ -141,7 +141,7 @@ def _emit(plan: Plan) -> bytes:
         start, end = addresses[item_id]
         REFERENCE.write(stream, {'id': item_id, 'start': start, 'end': end})
     stream[:fmt.HEADER_SIZE] = _emit_header(plan, reference_offset)
-    stream[fmt.CHECKSUM_SLICE] = fmt.checksum(stream).encode('utf-16-be')
+    stream[fmt.CHECKSUM_SLICE] = fmt.checksum(bytes(stream)).encode('utf-16-be')
     return bytes(stream)
 
 
@@ -212,43 +212,43 @@ def _close_block(stream: bytearray, at: int) -> None:
 
 
 def _emit_image_item(stream: bytearray, plan: Plan, item: ImageItem) -> None:
-    legacy = item.legacy if isinstance(item.legacy, Legacy1xImage) else Legacy1xImage()
+    stored = item.v1 if isinstance(item.v1, V1Image) else V1Image()
     resource = item.resource
-    source = legacy.source if legacy.source is not None else (
+    source = stored.source if stored.source is not None else (
         resource.source or fmt.BRUTE_FORCE_SOURCE)
-    brute_force = legacy.brute_force or source == fmt.BRUTE_FORCE_SOURCE
-    offset = legacy.crop_offset or (-resource.width / 2, -resource.height / 2)
+    brute_force = stored.brute_force or source == fmt.BRUTE_FORCE_SOURCE
+    offset = stored.crop_offset or (-resource.width / 2, -resource.height / 2)
     at = _open_block(stream, fmt.IMAGE_ITEM_MARKER, fmt.IMAGE_ITEM_NAME)
     IMAGE_ITEM.write(stream, {
         'brute_force': brute_force,
         'source': source,
         'name': None if brute_force else item.name,
         'opacity': float(item.opacity),
-        'linear': _linear(item.transform, legacy.perspective),
+        'linear': _linear(item.transform, stored.perspective),
         'position': (item.transform.dx, item.transform.dy),
         'id': plan.ids[id(item)],
         'z': 1.0 if item.z is None else item.z,
-        'before_crop': _linear(legacy.before_crop, legacy.before_crop_perspective),
+        'before_crop': _linear(stored.before_crop, stored.before_crop_perspective),
         'crop_offset': offset,
-        'crop_scale': legacy.crop_scale,
+        'crop_scale': stored.crop_scale,
         'bounds': item.bounds or Path.centered_rectangle(*resource.size),
-        '_tail': legacy.tail or fmt.IMAGE_TAIL_DEFAULT,
+        '_tail': stored.tail or fmt.IMAGE_TAIL_DEFAULT,
         'children': len(_notes(item.children)),
     })
-    stream += legacy.trailing
+    stream += stored.trailing
     _close_block(stream, at)
     for note in _notes(item.children):
         _emit_note(stream, plan, note)
 
 
 def _emit_note(stream: bytearray, plan: Plan, note: NoteItem) -> None:
-    legacy = note.legacy if isinstance(note.legacy, Legacy1xNote) else Legacy1xNote()
-    foreground = legacy.foreground or fmt.argb_to_color(note.text_color or '#ffffffff')
-    background = legacy.background or fmt.argb_to_color(note.background_color or '')
+    stored = note.v1 if isinstance(note.v1, V1Note) else V1Note()
+    foreground = stored.foreground or fmt.argb_to_color(note.text_color or '#ffffffff')
+    background = stored.background or fmt.argb_to_color(note.background_color or '')
     at = _open_block(stream, fmt.TEXT_ITEM_MARKER, fmt.TEXT_ITEM_NAME)
     NOTE_ITEM.write(stream, {
         'text': note.text,
-        'linear': _linear(note.transform, legacy.perspective),
+        'linear': _linear(note.transform, stored.perspective),
         'position': (note.transform.dx, note.transform.dy),
         'id': plan.ids[id(note)],
         'z': 1.0 if note.z is None else note.z,
@@ -256,14 +256,14 @@ def _emit_note(stream: bytearray, plan: Plan, note: NoteItem) -> None:
         'foreground_kind': 1,
         'foreground_opacity': foreground[0],
         'foreground_rgb': tuple(foreground[1]),
-        '_colour_gap': legacy.colour_gap,
+        '_colour_gap': stored.colour_gap,
         'background_kind': 1,
         'background_opacity': background[0],
         'background_rgb': tuple(background[1]),
-        '_tail': legacy.tail,
+        '_tail': stored.tail,
         'children': len(_notes(note.children)),
     })
-    stream += legacy.trailing
+    stream += stored.trailing
     _close_block(stream, at)
     for child in _notes(note.children):
         _emit_note(stream, plan, child)

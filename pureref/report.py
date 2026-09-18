@@ -29,25 +29,25 @@ def summary(scene: Scene) -> dict:
 
 
 def _provenance(scene: Scene) -> dict:
-    legacy = scene.legacy
-    modern = scene.extras.get('v2')
-    if legacy is not None:
+    stored = scene.v1
+    modern = scene.v2
+    if stored is not None:
         return {'container': {
-            'checksum': legacy.checksum,
-            'checksum_valid': legacy.checksum_valid,
-            'application_version': legacy.application_version,
-            'folder': legacy.folder}}
-    if modern:
-        envelope = modern.get('envelope')
+            'checksum': stored.checksum,
+            'checksum_valid': stored.checksum_valid,
+            'application_version': stored.application_version,
+            'folder': stored.folder}}
+    if modern is not None:
+        envelope = modern.envelope
         return {'container': {
             'checksum': getattr(envelope, 'checksum', None),
             'checksum_valid': getattr(envelope, 'checksum_valid', None),
             'application_version': getattr(envelope, 'application_version', None),
             'database_bytes': getattr(envelope, 'database_size', None),
             'thumbnail_bytes': len(getattr(envelope, 'thumbnail', b'') or b''),
-            'user_version': modern.get('user_version'),
-            'integrity': modern.get('integrity'),
-            'unknown_tables': modern.get('unknown_tables')}}
+            'user_version': modern.user_version,
+            'integrity': modern.integrity,
+            'unknown_tables': modern.unknown_tables}}
     return {}
 
 

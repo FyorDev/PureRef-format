@@ -8,6 +8,7 @@ from a file are kept, which makes load/save cycles stable.
 from __future__ import annotations
 
 import html as html_module
+from typing import cast
 
 from ..model import (NOTE_STYLES, VERSION_2_0, VERSION_2_1, DrawItem, GroupItem,
                      ImageItem, Item, NoteItem, Scene)
@@ -39,8 +40,7 @@ def write(scene: Scene, *, format_version: str = VERSION_2_1,
     anything this package does not model — the escape hatch that keeps SQL an
     option without making it the interface.
     """
-    previous = scene.extras.get('v2', {})
-    stored = previous.get('envelope')
+    stored = getattr(scene.v2, 'envelope', None)
     preview = thumbnail if thumbnail is not None else getattr(stored, 'thumbnail', b'')
     if preview and format_version == VERSION_2_0:
         if thumbnail:
@@ -100,8 +100,8 @@ def _write_items(db: Database, scene: Scene, resources) -> None:
 
 
 def _write_subtype(db: Database, item: Item, item_id: int, resources) -> None:
-    # Columns the reader kept in `extras` but this package does not model are not
-    # written back: PureRef drops unknown columns on its own next save anyway.
+    # Columns the reader kept on `item.v2` but this package does not model are
+    # not written back: PureRef drops unknown columns on its own next save anyway.
     # Values it could not interpret *are* written back, exactly as they arrived.
     kept = _unparsed(item)
     if isinstance(item, ImageItem):
@@ -132,7 +132,7 @@ def _write_subtype(db: Database, item: Item, item_id: int, resources) -> None:
 
 def _write_metadata(db: Database, scene: Scene, envelope: Envelope,
                     scene_rect) -> None:
-    kept = dict(scene.extras.get('v2', {}).get('metadata') or {})
+    kept = dict(getattr(scene.v2, 'metadata', None) or {})
     row = {name: kept.get(name) for name in schema.columns('metadata')}
     row.update(
         id=0,
@@ -160,22 +160,23 @@ def _scene_rect(scene: Scene, explicit, stored):
 def _unparsed(item: Item) -> dict[str, str]:
     """The cells a reader could not interpret, ready to be written back."""
     return {column: value.cell for column, value
-            in item.extras.get('v2', {}).get('unparsed', {}).items()
+            in (getattr(item.v2, 'unparsed', None) or {}).items()
             if isinstance(value, Unparsed)}
 
 
 def _assign_ids(scene: Scene) -> dict[int, int]:
     """Keep the ids a file came with when they are complete and unique."""
     items = list(scene.walk())
-    stored = [item.extras.get('v2', {}).get('id') for item in items]
+    stored = [getattr(item.v2, 'id', None) for item in items]
     if all(value is not None for value in stored) and len(set(stored)) == len(stored):
-        return {id(item): value for item, value in zip(items, stored)}
+        return {id(item): cast(int, value)
+                for item, value in zip(items, stored, strict=True)}
     return {id(item): index for index, item in enumerate(items)}
 
 
 def _sibling_groups(scene: Scene):
     """Yield (parent, children) pairs, parents before their children."""
-    queue = [(None, scene.items)]
+    queue: list[tuple[Item | None, list[Item]]] = [(None, scene.items)]
     while queue:
         parent, siblings = queue.pop(0)
         yield parent, siblings

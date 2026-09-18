@@ -21,14 +21,17 @@ from .model import (LATEST, LOCK_CLOSED, LOCK_OPEN, NOTE_COMFORTABLE, NOTE_COMPA
                     VERSIONS, DrawItem, GroupItem, ImageItem, Item, NoteItem, Playback,
                     Resource, Scene, Stroke, Transform, View)
 from .problems import Loss, Problem, Unparsed
-from .qt import FormatError, Path as CropPath
+# `Outline` is the geometry PureRef stores for crop outlines and drawing
+# strokes: a QPainterPath. It is exported under a plain name because `Path`
+# would read like a filesystem path everywhere it appears.
+from .qt import FormatError, Path as Outline
 from . import layout, report, transcode, v1, v2
 
 __all__ = [
     'read', 'read_bytes', 'write', 'write_bytes', 'convert', 'detect', 'summary',
     'layout', 'report', 'transcode', 'v1', 'v2',
     'Scene', 'Item', 'ImageItem', 'NoteItem', 'GroupItem', 'DrawItem', 'Resource',
-    'Stroke', 'Transform', 'View', 'Playback', 'CropPath', 'FormatError',
+    'Stroke', 'Transform', 'View', 'Playback', 'Outline', 'FormatError',
     'Loss', 'Problem', 'Unparsed',
     'VERSIONS', 'VERSION_1', 'VERSION_2_0', 'VERSION_2_1', 'LATEST',
     'RENDER_SMOOTH', 'RENDER_GRAYSCALE', 'PLAYBACK_STATIC', 'PLAYBACK_STOPPED',
@@ -77,7 +80,7 @@ def write_bytes(scene: Scene, *, version: str = LATEST, **options) -> bytes:
 
 
 def write(scene: Scene, path, *, version: str = LATEST, overwrite: bool = False,
-          **options) -> list[str]:
+          **options) -> list[Loss]:
     """Write `scene` to `path` and return what the format could not keep.
 
     Existing files are left alone unless `overwrite=True`, because a `.pur` is
@@ -90,7 +93,7 @@ def write(scene: Scene, path, *, version: str = LATEST, overwrite: bool = False,
 
 
 def convert(source, target, *, version: str = LATEST, overwrite: bool = False,
-            **options) -> list[str]:
+            **options) -> list[Loss]:
     """Read any `.pur` and write it as `version`, returning what was lost."""
     return write(read(source), target, version=version, overwrite=overwrite, **options)
 

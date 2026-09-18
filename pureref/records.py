@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass, field as dataclass_field
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 from .qt import Cursor, FormatError, pack_string
 
@@ -28,7 +29,10 @@ NULL = 0xFFFFFFFF
 class Codec:
     """Reads one value from a cursor and writes it back."""
 
-    size: int | None = None      # fixed byte count, when there is one
+    @property
+    def size(self) -> int | None:
+        """The fixed byte count, for codecs that have one."""
+        return None
 
     def read(self, cursor: Cursor) -> Any:      # pragma: no cover - interface
         raise NotImplementedError
@@ -142,8 +146,8 @@ class Utf16String(Codec):
         return 'QString'
 
 
-class NullableUtf16String(Utf16String):
-    """The same, except `0xffffffff` in the length means there is no string."""
+class NullableUtf16String(Codec):
+    """A QString, except `0xffffffff` in the length means there is no string."""
 
     def read(self, cursor: Cursor) -> str | None:
         if cursor.peek('i') == -1:

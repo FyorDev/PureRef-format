@@ -29,10 +29,10 @@ class ReadTests(unittest.TestCase):
         self.assertTrue(first.resource.data.startswith(fmt.PNG_HEAD))
 
     def test_checksum_is_checked(self):
-        self.assertTrue(self.scene.legacy.checksum_valid)
+        self.assertTrue(self.scene.v1.checksum_valid)
         broken = bytearray(self.data)
         broken[500] ^= 0xFF
-        self.assertFalse(pureref.read_bytes(bytes(broken)).legacy.checksum_valid)
+        self.assertFalse(pureref.read_bytes(bytes(broken)).v1.checksum_valid)
 
     def test_canvas_and_view(self):
         self.assertEqual(self.scene.canvas, (-10000.0, -10000.0, 10000.0, 10000.0))
@@ -61,11 +61,11 @@ class AuthenticAppTests(unittest.TestCase):
             with self.subTest(name=name):
                 data = (FIXTURES / name).read_bytes()
                 scene = pureref.read_bytes(data)
-                self.assertTrue(scene.legacy.checksum_valid)
+                self.assertTrue(scene.v1.checksum_valid)
                 self.assertEqual(pureref.write_bytes(scene, version='1.10'), data)
 
     def test_the_header_carries_the_application_version(self):
-        versions = [pureref.read(FIXTURES / name).legacy.application_version
+        versions = [pureref.read(FIXTURES / name).v1.application_version
                     for name in self.names]
         self.assertEqual(versions, ['1.10.4', '1.11.1'])
 
@@ -76,7 +76,7 @@ class AuthenticAppTests(unittest.TestCase):
     def test_the_two_builds_agree_on_everything_but_that_string(self):
         first, second = ((FIXTURES / name).read_bytes() for name in self.names)
         self.assertEqual(len(first), len(second))
-        differing = [index for index, (a, b) in enumerate(zip(first, second)) if a != b]
+        differing = [index for index, (a, b) in enumerate(zip(first, second, strict=True)) if a != b]
         # the application-version string, then the checksum that covers it
         self.assertTrue(all(28 <= index < 40 or 44 <= index < 108 for index in differing),
                         differing[:10])

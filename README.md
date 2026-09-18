@@ -60,9 +60,12 @@ refuses to overwrite an existing file unless you pass `overwrite=True`, because 
 
 ```python
 >>> scene.losses('1.10')
-['1 group(s): 1.x has no groups, their children move to the canvas',
- 'JPG image data: re-encoded as PNG, which 1.x is limited to']
+[Loss('groups', '1 group(s): 1.x has no groups, their children move to the canvas'),
+ Loss('images', 'JPG image data: re-encoded as PNG, which 1.x is limited to')]
 ```
+
+Each `Loss` is a string with a `.code`, so it reads fine in a message and can
+still be branched on.
 
 Every item is a `Transform` plus fields: `ImageItem`, `NoteItem`, `GroupItem`,
 `DrawItem`, all with `children`. An image item's position is its **center**, and
@@ -78,9 +81,14 @@ pack_rows(scene.images, target_width=1000)   # rows that line up exactly
 ```
 
 Anything a reader did not interpret is kept and written back, so reading and
-saving a file does not degrade it. Reading never fails over one unfamiliar value:
-a serialized type this package does not know becomes an `Unparsed` value, noted
-on the scene and restored byte for byte when you save.
+saving a file does not degrade it. It lands on one typed carrier per generation —
+`item.v1` and `scene.v1` for a 1.x file, `item.v2` and `scene.v2` for a 2.x one —
+which is where the pre-crop transform, the exact 16-bit note colours, the row ids,
+the envelope and any column this package has never seen live.
+
+Reading never fails over one unfamiliar value: a serialized type this package
+does not know becomes an `Unparsed` value, noted on the scene and restored byte
+for byte when you save.
 
 ```python
 >>> scene = pureref.read('from-a-newer-pureref.pur')
@@ -144,7 +152,18 @@ DISPLAY=:0 PUREREF_EXE=/usr/bin/PureRef python -m tests.integration_app
 ```
 
 The unit suite covers the Qt primitives, both formats, conversions, the layout,
-the CLI and the deprecated shim, against fixtures written by PureRef itself.
+the CLI and the deprecated shim, against fixtures written by PureRef itself. It
+also truncates and bit-flips every fixture and insists that a damaged file comes
+back as either a `Scene` with `problems` or a `FormatError` — never a traceback
+from inside a parser.
+
+The layout tables in `docs/format-v1.md` are generated from the record
+declarations the reader and writer use, and a test fails when they drift:
+
+```sh
+python -m tools.generate_docs            # rewrite them
+python -m tools.generate_docs --check    # or just report
+```
 
 The integration suite loads the files this package writes in the real PureRef,
 exports renders, saves them again and checks that every field survived. Point
@@ -168,8 +187,8 @@ pur.read('board.pur')
 pur.write('copy.pur')
 ```
 
-It is now a thin shim over `pureref`, which handles 2.x as well. `pureref_gen.py`
-and `pureref_gen_script.py` are likewise thin wrappers; `pureref new` and
+It is now a thin shim over `pureref`, which handles 2.x as well. The original
+scripts moved to [legacy/](legacy/) and still work; `pureref new` and
 `pureref batch` replace them.
 
 ## About

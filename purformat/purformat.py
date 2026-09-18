@@ -1,4 +1,3 @@
-from typing import List
 import os
 from .items import PurImage, PurGraphicsTextItem
 
@@ -19,8 +18,8 @@ class PurFile:
         self.zoom = 1.0  # View zoom level
         self.xCanvas, self.yCanvas = 0, 0  # View location
         self.folderLocation = os.getcwd()
-        self.images: List[PurImage] = []  # image list
-        self.text: List[PurGraphicsTextItem] = []  # text list
+        self.images: list[PurImage] = []  # image list
+        self.text: list[PurGraphicsTextItem] = []  # text list
 
     # Import a .pur file into this object
     def read(self, file: str):

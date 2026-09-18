@@ -6,8 +6,9 @@ loss: a 1.x image instance is an `ImageItem`, a 1.x text item is a `NoteItem`,
 and 1.x has no groups or drawings.
 
 Fields a given generation cannot express are reported by `Scene.losses(version)`
-rather than dropped silently, and bytes a reader did not interpret are kept in
-`extras` so that load/save round-trips stay faithful.
+rather than dropped silently, and whatever a reader did not interpret is kept on
+`Item.v1`/`Item.v2` and `Scene.v1`/`Scene.v2`, one typed carrier per generation,
+so that load/save round-trips stay faithful.
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from math import cos, radians, sin
 from pathlib import Path as FilePath
+from typing import TypeVar
 
 from . import imagesize
 from .problems import Loss, Problem
@@ -64,21 +66,21 @@ class Transform:
     dy: float = 0.0
 
     @classmethod
-    def translate(cls, dx: float, dy: float) -> 'Transform':
+    def translate(cls, dx: float, dy: float) -> Transform:
         return cls(dx=dx, dy=dy)
 
     @classmethod
-    def scale(cls, x: float, y: float | None = None) -> 'Transform':
+    def scale(cls, x: float, y: float | None = None) -> Transform:
         return cls(m11=x, m22=x if y is None else y)
 
     @classmethod
-    def rotate(cls, degrees: float) -> 'Transform':
+    def rotate(cls, degrees: float) -> Transform:
         angle = radians(degrees)
         return cls(m11=cos(angle), m12=sin(angle), m21=-sin(angle), m22=cos(angle))
 
     @classmethod
     def compose(cls, *, x: float = 0.0, y: float = 0.0, scale_x: float = 1.0,
-                scale_y: float = 1.0, rotation: float = 0.0) -> 'Transform':
+                scale_y: float = 1.0, rotation: float = 0.0) -> Transform:
         """Rotate, then scale, then translate: the order the app's gizmo uses."""
         angle = radians(rotation)
         cosine, sine = cos(angle), sin(angle)
@@ -86,7 +88,7 @@ class Transform:
                    m21=-scale_y * sine, m22=scale_y * cosine, dx=x, dy=y)
 
     @classmethod
-    def from_matrix9(cls, values) -> 'Transform':
+    def from_matrix9(cls, values) -> Transform:
         m11, m12, _, m21, m22, _, dx, dy, _ = values
         return cls(m11, m12, m21, m22, dx, dy)
 
@@ -101,7 +103,7 @@ class Transform:
         return (self.m11 * x + self.m21 * y + self.dx,
                 self.m12 * x + self.m22 * y + self.dy)
 
-    def scaled(self, factor: float) -> 'Transform':
+    def scaled(self, factor: float) -> Transform:
         return replace(self, m11=self.m11 * factor, m12=self.m12 * factor,
                        m21=self.m21 * factor, m22=self.m22 * factor)
 
@@ -127,7 +129,7 @@ class Resource:
             raise ValueError('A linked resource needs a source path')
 
     @classmethod
-    def from_file(cls, path, *, link: bool = False) -> 'Resource':
+    def from_file(cls, path, *, link: bool = False) -> Resource:
         path = FilePath(path)
         data = path.read_bytes()
         fmt, width, height = imagesize.identify(data)
@@ -137,7 +139,7 @@ class Resource:
     @classmethod
     def from_bytes(cls, data: bytes, *, width: int | None = None,
                    height: int | None = None, format: str | None = None,
-                   source: str = '') -> 'Resource':
+                   source: str = '') -> Resource:
         if width is None or height is None or format is None:
             detected, detected_width, detected_height = imagesize.identify(data)
             format = format or detected
@@ -159,7 +161,7 @@ class Resource:
 
 
 @dataclass
-class Legacy1xImage:
+class V1Image:
     """1.x fields an image item carries that the model has no home for.
 
     They exist so a file written by PureRef 1.x comes back byte for byte: the
@@ -169,7 +171,7 @@ class Legacy1xImage:
 
     source: str | None = None
     brute_force: bool = False
-    before_crop: 'Transform' = field(default_factory=lambda: Transform())
+    before_crop: Transform = field(default_factory=lambda: Transform())
     before_crop_perspective: tuple[float, float] = (0.0, 0.0)
     crop_offset: tuple[float, float] | None = None
     crop_scale: float = 1.0
@@ -181,7 +183,7 @@ class Legacy1xImage:
 
 
 @dataclass
-class Legacy1xNote:
+class V1Note:
     """A 1.x note's exact 16-bit colours, so writing reproduces them."""
 
     foreground: tuple[int, list[int]] | None = None
@@ -196,7 +198,7 @@ class Legacy1xNote:
 
 
 @dataclass
-class Legacy1xFile:
+class V1File:
     """What a 1.x header held beyond the model's canvas and view."""
 
     header: bytes = b''
@@ -204,6 +206,44 @@ class Legacy1xFile:
     checksum: str | None = None
     checksum_valid: bool | None = None
     folder: str | None = None
+
+
+@dataclass
+class V2Item:
+    """What a 2.x row carried beyond the columns the model names.
+
+    `id` is the row's primary key, kept so a load/save cycle does not renumber a
+    file. `unparsed` holds cells whose serialized type this package did not
+    understand, keyed by column; they are written back exactly as they arrived,
+    which is what lets a file from a newer PureRef survive the trip. `columns`
+    and `subtype_columns` are columns a future schema added, recorded for
+    inspection — PureRef itself drops them on its next save.
+    """
+
+    id: int | None = None
+    unparsed: dict = field(default_factory=dict)
+    columns: dict = field(default_factory=dict)
+    subtype_columns: dict = field(default_factory=dict)
+    # An item with no row in any subtype table: it renders as nothing, and is
+    # kept only so that saving does not silently delete it.
+    orphan: bool = False
+    # A note's style id as stored, when it is not one this package names.
+    note_style: int | None = None
+
+
+@dataclass
+class V2File:
+    """The parts of a 2.x file outside the item tables."""
+
+    envelope: object | None = None
+    metadata: dict = field(default_factory=dict)
+    unknown_tables: list = field(default_factory=list)
+    user_version: int | None = None
+    integrity: list[str] = field(default_factory=list)
+
+
+# `Scene.add` hands back exactly the item kind it was given.
+ItemT = TypeVar('ItemT', bound='Item')
 
 
 @dataclass
@@ -234,6 +274,16 @@ class Stroke:
         if self.width <= 0:
             raise ValueError('Stroke width must be positive')
 
+    @classmethod
+    def line(cls, start, end, **options) -> Stroke:
+        """A straight stroke from `start` to `end`, both (x, y)."""
+        return cls(path=Path.line(*start, *end), **options)
+
+    @classmethod
+    def freehand(cls, points, **options) -> Stroke:
+        """A stroke through `points`, the way the brush tool records one."""
+        return cls(path=Path.polyline(points), **options)
+
     @property
     def dashed(self) -> bool:
         return self.style == STROKE_DASHED
@@ -256,12 +306,11 @@ class Item:
     # The note PureRef attaches through its comment dialog: free text, shown in
     # the item's tooltip. 1.x has nowhere to put it.
     comment: str | None = None
-    children: list['Item'] = field(default_factory=list)
-    # Everything a backend needs to reproduce a file but the model does not
-    # model. `legacy` is the 1.x side, typed per item kind; `extras` is what a
-    # 2.x reader kept, keyed by section.
-    legacy: 'Legacy1xImage | Legacy1xNote | None' = None
-    extras: dict = field(default_factory=dict)
+    children: list[Item] = field(default_factory=list)
+    # What the file carried that the model does not name, one typed carrier per
+    # generation: an item comes from one or the other, never both.
+    v1: V1Image | V1Note | None = None
+    v2: V2Item | None = None
 
     @property
     def x(self) -> float:
@@ -279,7 +328,7 @@ class Item:
     def y(self, value: float) -> None:
         self.transform = replace(self.transform, dy=value)
 
-    def add(self, child: 'Item') -> 'Item':
+    def add(self, child: Item) -> Item:
         self.children.append(child)
         return child
 
@@ -296,12 +345,17 @@ class Item:
 class ImageItem(Item):
     """One placement of a resource on the canvas, positioned at its center."""
 
-    resource: Resource | None = None
+    # All three are set by the time construction finishes: an image item without
+    # a resource is refused, and the other two are derived from it when a caller
+    # leaves them out. They are declared as what they always are so that callers
+    # do not have to narrow away a None that cannot happen; the defaults exist
+    # only because every field after the base class ones needs one.
+    resource: Resource = None  # type: ignore[assignment]
     # Image pixels are mapped into item coordinates by this transform; the app
     # centers the image, so the default translates by (-width/2, -height/2).
-    pixel_transform: Transform | None = None
+    pixel_transform: Transform = None  # type: ignore[assignment]
     # The visible boundary in centered-pixel coordinates; a rectangle unless cropped.
-    bounds: Path | None = None
+    bounds: Path = None  # type: ignore[assignment]
     flags: int = RENDER_SMOOTH
     playback: Playback = field(default_factory=Playback)
 
@@ -322,7 +376,7 @@ class ImageItem(Item):
     def grayscale(self) -> bool:
         return bool(self.flags & RENDER_GRAYSCALE)
 
-    def crop(self, left: float, top: float, width: float, height: float) -> 'ImageItem':
+    def crop(self, left: float, top: float, width: float, height: float) -> ImageItem:
         """Crop in source pixel coordinates, measured from the top left."""
         if width <= 0 or height <= 0:
             raise ValueError('Crop dimensions must be positive')
@@ -338,15 +392,15 @@ class ImageItem(Item):
         return (abs((x1 - x0) * self.transform.m11) + abs((y1 - y0) * self.transform.m21),
                 abs((x1 - x0) * self.transform.m12) + abs((y1 - y0) * self.transform.m22))
 
-    def scale(self, factor: float) -> 'ImageItem':
+    def scale(self, factor: float) -> ImageItem:
         self.transform = self.transform.scaled(factor)
         return self
 
-    def scale_to_width(self, width: float) -> 'ImageItem':
+    def scale_to_width(self, width: float) -> ImageItem:
         current = self.size[0]
         return self.scale(width / current) if current else self
 
-    def scale_to_height(self, height: float) -> 'ImageItem':
+    def scale_to_height(self, height: float) -> ImageItem:
         current = self.size[1]
         return self.scale(height / current) if current else self
 
@@ -410,15 +464,16 @@ class Scene:
     canvas: tuple[float, float, float, float] = (-10000.0, -10000.0, 10000.0, 10000.0)
     view: View = field(default_factory=View)
     source_version: str | None = None
-    legacy: Legacy1xFile | None = None
+    # As on `Item`: what the file held beyond what the model names.
+    v1: V1File | None = None
+    v2: V2File | None = None
     # What a reader could not interpret; empty for a file this package fully
     # understands. Reading never raises for these.
     problems: list[Problem] = field(default_factory=list)
-    extras: dict = field(default_factory=dict)
 
     # --- construction ---------------------------------------------------------
 
-    def add(self, item: Item, parent: Item | None = None) -> Item:
+    def add(self, item: ItemT, parent: Item | None = None) -> ItemT:
         (parent.children if parent is not None else self.items).append(item)
         return item
 
@@ -516,10 +571,10 @@ class Scene:
         """The transform of `target` with every ancestor folded in."""
         parents = self.parents() if parents is None else parents
         chain = []
-        item = target
-        while item is not None:
-            chain.append(item)
-            item = parents.get(id(item))
+        current: Item | None = target
+        while current is not None:
+            chain.append(current)
+            current = parents.get(id(current))
         result = Transform()
         for item in reversed(chain):
             result = _multiply(result, item.transform)
@@ -527,7 +582,7 @@ class Scene:
 
     def content_bounds(self, *, padding: float = 0.0):
         """The rectangle the scene's content occupies, or None when empty."""
-        corners = []
+        corners: list[tuple[float, float]] = []
         parents = self.parents()
         for item in self.walk():
             world = self.world_transform(item, parents)
@@ -561,12 +616,12 @@ class Scene:
                 return item
         return None
 
-    def losses(self, version: str) -> list[str]:
+    def losses(self, version: str) -> list[Loss]:
         """What writing this scene as `version` would drop or approximate."""
         if version not in VERSIONS:
             raise ValueError(f'Unknown version {version!r}; expected one of {VERSIONS}')
         if version == VERSION_2_0:
-            preview = getattr(self.extras.get('v2', {}).get('envelope'), 'thumbnail', b'')
+            preview = getattr(getattr(self.v2, 'envelope', None), 'thumbnail', b'')
             return [Loss('thumbnail', 'the preview image: the 2.0 header has no '
                          'thumbnail field')] if preview else []
         if version != VERSION_1:

@@ -28,4 +28,34 @@ pureref = "pureref.cli:main"
 Repository = "https://github.com/FyorDev/PureRef-format"
 
 [tool.setuptools]
+# `purformat` ships because old code imports it by name. The deprecated scripts
+# in legacy/, the tools/ and the tests are not part of the distribution.
 packages = ["pureref", "pureref.v1", "pureref.v2", "purformat"]
+
+[tool.setuptools.package-data]
+pureref = ["py.typed"]
+
+[tool.ruff]
+line-length = 90
+target-version = "py310"
+
+[tool.ruff.lint]
+# The package is written to read like prose; these are the checks that catch
+# mistakes rather than style opinions.
+select = ["E", "F", "W", "B", "UP", "C4", "SIM", "RET", "PIE"]
+# E501: the line length above is a guide, not a wall; SIM108: a ternary is not
+# always clearer than an if; RET504: a named result documents what is returned;
+# SIM105: an explicit except reads better than contextlib.suppress in a parser;
+# C408: dict(name=...) is the readable form for mapping a database row.
+ignore = ["E501", "SIM108", "RET504", "SIM105", "C408"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["pureref"]
+ignore_missing_imports = true
+# Not a strict-mode codebase: the goal is that a published type is honest, not
+# that every local has an annotation.
+check_untyped_defs = true

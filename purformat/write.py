@@ -4,8 +4,8 @@ Kept so code written against `purformat` keeps working. New code should use
 `pureref.write`, which can also write the 2.x format.
 """
 from pureref import imagesize, v1
-from pureref.model import (VERSION_1, ImageItem, Legacy1xFile, Legacy1xImage,
-                           Legacy1xNote, NoteItem, Resource, Scene, Transform, View)
+from pureref.model import (VERSION_1, ImageItem, V1File, V1Image,
+                           V1Note, NoteItem, Resource, Scene, Transform, View)
 from pureref.qt import Path
 
 LINK_BINARY = b'\xff\xff\xff\xff'
@@ -22,7 +22,7 @@ def to_scene(pur_file) -> Scene:
     scene = Scene(canvas=tuple(pur_file.canvas),
                   view=View(pur_file.zoom, pur_file.xCanvas, pur_file.yCanvas),
                   source_version=VERSION_1)
-    scene.legacy = Legacy1xFile(folder=getattr(pur_file, 'folderLocation', '') or '')
+    scene.v1 = V1File(folder=getattr(pur_file, 'folderLocation', '') or '')
     for image in pur_file.images:
         resource = _resource(image)
         for transform in image.transforms:
@@ -58,8 +58,9 @@ def _image_item(resource: Resource, transform) -> ImageItem:
         z=transform.zLayer,
         resource=resource,
         bounds=Path([(0 if index == 0 else 1, x, y) for index, (x, y)
-                     in enumerate(zip(transform.points[0], transform.points[1]))]),
-        legacy=Legacy1xImage(
+                     in enumerate(zip(transform.points[0], transform.points[1],
+                                      strict=False))]),
+        v1=V1Image(
             source=transform.source,
             brute_force=brute_force,
             before_crop=Transform(*_pairs(transform.matrixBeforeCrop)),
@@ -74,7 +75,7 @@ def _note(text_item) -> NoteItem:
         transform=_transform(text_item),
         z=text_item.zLayer,
         text=text_item.text,
-        legacy=Legacy1xNote(
+        v1=V1Note(
             foreground=(text_item.opacity, list(text_item.rgb)),
             background=(text_item.opacityBackground, list(text_item.rgbBackground))))
     note.children = [_note(child) for child in text_item.textChildren]

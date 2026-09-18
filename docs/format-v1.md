@@ -25,24 +25,34 @@ references      one 20-byte record per image item
 
 ## Header
 
-| Offset | Size | Meaning |
-|---:|---:|---|
-| 0 | 4 | `00 00 00 08`, the byte length of the version string |
-| 4 | 8 | UTF-16BE `1.10` |
-| 12 | 2 | number of image items plus root note items |
-| 14 | 2 | number of image items |
-| 16 | 8 | offset where the reference table starts |
-| 24 | 4 | `00 00 00 0c`, the byte length of the application-version string |
-| 28 | 12 | UTF-16BE application version — `1.10.4` or `1.11.1`, six characters exactly. This package writes back whatever it read and zero-fills it for new files, which PureRef accepts |
-| 40 | 4 | `00 00 00 40`, the byte length of the checksum string |
-| 44 | 64 | UTF-16BE lowercase MD5 hex of everything from offset 108 on |
-| 108 | 4 | number of item ids |
-| 112 | 32 | canvas rectangle: four doubles |
-| 144 | 8 | view zoom |
-| 176 | 8 | view zoom again, for the vertical axis |
-| 208 | 8 | zoom multiplier, always `1.0` |
-| 216 | 4 | view x, int32 |
-| 220 | 4 | view y, int32 |
+<!-- generated: header -->
+| Offset | Size | Field | Encoding | Meaning |
+|---:|---:|---|---|---|
+| 0 | 4 | `_version_length` | uint32 | byte length of the version string |
+| 4 | 8 | `_version` | 8 bytes | UTF-16BE "1.10" — the format version, which 1.11.1 still writes |
+| 12 | 2 | `item_count` | uint16 | image items plus root note items |
+| 14 | 2 | `image_count` | uint16 | image items |
+| 16 | 8 | `reference_offset` | uint64 | where the reference table starts |
+| 24 | 4 | `_application_length` | uint32 | byte length of the application-version string |
+| 28 | 12 | `application_version` | 12 bytes | UTF-16BE "1.10.4" or "1.11.1"; PureRef accepts it zero-filled |
+| 40 | 4 | `_checksum_length` | uint32 | byte length of the checksum string |
+| 44 | 64 | `checksum` | 64 bytes | UTF-16BE MD5 hex of everything from offset 108 |
+| 108 | 4 | `id_count` | uint32 | number of item ids |
+| 112 | 32 | `canvas` | four doubles | canvas rectangle |
+| 144 | 8 | `zoom` | double | view zoom |
+| 152 | 24 | `_unknown_152` | 24 bytes | zero in every observed file; preserved |
+| 176 | 8 | `zoom_y` | double | view zoom again, vertically |
+| 184 | 24 | `_unknown_184` | 24 bytes | zero in every observed file; preserved |
+| 208 | 8 | `zoom_multiplier` | double | always 1.0 |
+| 216 | 4 | `view_x` | int32 | view x |
+| 220 | 4 | `view_y` | int32 | view y |
+
+Total: 224 bytes.
+<!-- end generated -->
+
+The application version is `1.10.4` or `1.11.1`, six characters exactly; this
+package writes back whatever it read and zero-fills it for new files, which
+PureRef accepts.
 
 The remaining header bytes are zero in everything observed, and PureRef preserves
 whatever is there: a file written with `0xAA` through bytes 152-175 and `0xBB`
@@ -92,29 +102,31 @@ parent's field count says how many to expect.
 uint64  end offset
 uint32  34
 34      UTF-16BE "GraphicsImageItem"
-uint32  0                       -- only when the image was brute-force loaded
-QString source                  -- "BruteForceLoaded" for recovered images
-QString name                    -- omitted for brute-force loaded images
-double  opacity                 -- 1.0 when fully opaque
-6d      m11 m12 m13 m21 m22 m23 -- the linear part of the transform
-2d      x y                     -- the image's center on the canvas
-double  1.0                     -- rewritten as 1.0 whatever it held
-uint32  item id
-double  z
-6d      matrix before cropping
-2d      crop offset
-double  crop scale
-uint32  crop point count
-        per point: uint32 kind (0 for the first, 1 after), double x, double y
-double  0.0                     -- kept, no observed effect
-uint32  1                       -- kept, no observed effect
-int8    0                       -- kept as a boolean: anything non-zero becomes 1
-uint32  2000                    -- kept, no observed effect
-uint32  2000                    -- kept, no observed effect
-uint32  number of note children
 ```
 
-**The double before the matrix is the item's opacity.** Writing 1.0, 0.5 and 0.15
+then, in order:
+
+<!-- generated: image-item -->
+| Field | Encoding | Meaning |
+|---|---|---|
+| `brute_force` | uint32 0, only when present | four zero bytes, present for an image recovered by brute force |
+| `source` | QString or -1 for none | "BruteForceLoaded" for recovered images |
+| `name` | QString or -1 for none | omitted entirely for brute-force loaded images |
+| `opacity` | double | 1.0 when opaque; PureRef stores it as a float |
+| `linear` | six doubles: m11 m12 m13 m21 m22 m23 | the linear part of the transform; m13 and m23 are rewritten as 0 |
+| `position` | two doubles: x, y | the image centre on the canvas |
+| `_constant_one` | double | rewritten as 1.0 whatever it held |
+| `id` | uint32 | item id |
+| `z` | double | stacking |
+| `before_crop` | six doubles: m11 m12 m13 m21 m22 m23 | the transform before cropping, for "reset cropping" |
+| `crop_offset` | two doubles: x, y | crop offset |
+| `crop_scale` | double | crop scale |
+| `bounds` | uint32 count, then uint32 kind and two doubles each | the crop outline, closed, in centred pixel coordinates |
+| `_tail` | 21 bytes | PureRef writes 0.0, 1, 0, 2000, 2000; kept, no observed effect |
+| `children` | uint32 | number of note children |
+<!-- end generated -->
+
+**`opacity` was long read as a constant.** Writing 1.0, 0.5 and 0.15
 renders the three images at full, half and near-transparent, and PureRef writes
 the value back — as single precision, so 0.15 returns as
 `0.15000000596046448`. Every file PureRef itself writes has 1.0 there, which is
@@ -124,7 +136,7 @@ other value is rewritten as 1.0.
 `m13` and `m23` are stored but not kept: values of 0.5 and 0.75 come back as 0,
 so the transform is affine in practice.
 
-The trailing block is stored state PureRef hands back unchanged (it rewrote only
+The `_tail` block is stored state PureRef hands back unchanged (it rewrote only
 the `int8`, normalising 3 to 1). PureRef writes `2000, 2000` where this
 package's predecessor wrote `-1` as an `int64`, and both load; varying any of it
 changes nothing on screen, including the render of a large image, so it is not a
@@ -144,26 +156,33 @@ prefers the size in the embedded PNG header and falls back to the outline.
 uint64  end offset
 uint32  32
 32      UTF-16BE "GraphicsTextItem"
-QString text                    -- plain text, not HTML
-6d      linear part of the transform
-2d      x y
-double  1.0
-uint32  item id
-double  z
-int8    color kind              -- 1 = RGB, 2 = HSV
-uint16  opacity                 -- 16-bit, 0xffff is opaque
-3x u16  red green blue          -- or hue saturation value when kind is 2
-uint16  0
-int8    background color kind
-uint16  background opacity      -- PureRef's default is 5000
-3x u16  background red green blue
-uint16  0
-uint32  number of note children
 ```
+
+then, in order:
+
+<!-- generated: note-item -->
+| Field | Encoding | Meaning |
+|---|---|---|
+| `text` | QString | plain text, not HTML |
+| `linear` | six doubles: m11 m12 m13 m21 m22 m23 | the linear part of the transform |
+| `position` | two doubles: x, y | position on the canvas |
+| `_constant_one` | double | rewritten as 1.0 whatever it held |
+| `id` | uint32 | item id |
+| `z` | double | stacking |
+| `foreground_kind` | int8 | 1 = RGB, 2 = HSV |
+| `foreground_opacity` | uint16 | 16-bit alpha |
+| `foreground_rgb` | three uint16 channels | red green blue, or hue saturation value when the kind is 2 |
+| `_colour_gap` | 2 bytes | zero in every observed file |
+| `background_kind` | int8 | 1 = RGB, 2 = HSV |
+| `background_opacity` | uint16 | 16-bit alpha; PureRef defaults to 5000 |
+| `background_rgb` | three uint16 channels | background channels |
+| `_tail` | 2 bytes | zero in every observed file, and it belongs before the count |
+| `children` | uint32 | number of note children |
+<!-- end generated -->
 
 Colors are 16 bits per channel: `channel * 257` of an 8-bit value. HSV hue is
 scaled to 35900. `pureref` normalizes HSV to RGB on read and writes the RGB form,
-keeping the original 16-bit values in `extras` so unmodified files round-trip
+keeping the original 16-bit values on `item.v1` so unmodified files round-trip
 byte for byte.
 
 ## Folder string and reference table
@@ -172,11 +191,15 @@ After the last item comes one `QString` with the folder a file was last loaded
 from, and the header's offset field points just past it. From there to the end of
 the file:
 
-```text
-uint32  item id
-uint64  start address of that item's image data or instance slot
-uint64  end address
-```
+<!-- generated: reference -->
+| Offset | Size | Field | Encoding | Meaning |
+|---:|---:|---|---|---|
+| 0 | 4 | `id` | uint32 | image item id |
+| 4 | 8 | `start` | uint64 | start of its image data or instance slot |
+| 12 | 8 | `end` | uint64 | end of the same |
+
+Total: 20 bytes.
+<!-- end generated -->
 
 One record per image item. Note items are not referenced.
 

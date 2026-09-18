@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pureref
 from pureref import (LOCK_OPEN, PLAYBACK_PAUSED, RENDER_GRAYSCALE, RENDER_SMOOTH,
-                     STROKE_DASHED, STROKE_FLAT, CropPath, Scene, Stroke)
+                     STROKE_DASHED, STROKE_FLAT, Outline, Scene, Stroke)
 
 FIXTURES = Path(__file__).resolve().parent / 'fixtures'
 WINDOWS_DEFAULT = r'C:\Program Files\PureRef\PureRef.exe'
@@ -120,9 +120,9 @@ def full_scene() -> Scene:
     note = scene.add_note('Everything Ω 中', parent=group, x=-60, y=-140,
                           text_color='#ff40ff', background_color='#80304050')
     note.comment = 'a comment on a note'
-    scene.add_drawing([Stroke(path=CropPath([(0, -260, 120), (1, 260, 120)]),
+    scene.add_drawing([Stroke(path=Outline([(0, -260, 120), (1, 260, 120)]),
                               rgba=(240, 200, 60, 255), width=6, style=STROKE_DASHED),
-                       Stroke(path=CropPath([(0, -260, 160), (1, 260, 160)]),
+                       Stroke(path=Outline([(0, -260, 160), (1, 260, 160)]),
                               rgba=(120, 220, 255, 255), width=6, style=STROKE_FLAT)],
                       parent=group)
     return scene
@@ -195,9 +195,9 @@ def check_1_x_authentic(session: Session) -> None:
     data = path.read_bytes()
     scene = pureref.read_bytes(data)
     assert scene.source_version == '1.10', scene.source_version
-    assert scene.legacy.checksum_valid, 'checksum mismatch on an app-made file'
-    assert scene.legacy.application_version == session.version, (
-        scene.legacy.application_version, session.version)
+    assert scene.v1.checksum_valid, 'checksum mismatch on an app-made file'
+    assert scene.v1.application_version == session.version, (
+        scene.v1.application_version, session.version)
     assert [item.resource.size for item in scene.images] == [(64, 32), (40, 80)]
     assert pureref.write_bytes(scene, version='1.10') == data, 'repack was not exact'
     session.results['app_made_file_repacks_byte_for_byte'] = True
