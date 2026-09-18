@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from .. import transcode
 from ..model import (VERSION_1, DrawItem, GroupItem, ImageItem, Item,
-                     V1Image, V1Note, NoteItem, Scene, _multiply)
+                     V1Image, V1Note, NoteItem, Scene, multiply)
 from ..qt import Path, pack_string
 from . import format as fmt
 from .records import HEADER, IMAGE_ITEM, NOTE_ITEM, REFERENCE, from_transform
@@ -119,7 +119,7 @@ def _reparent(parent: Item, children):
     for child in children:
         clone = copy(child)
         clone.children = list(child.children)
-        clone.transform = _multiply(parent.transform, child.transform)
+        clone.transform = multiply(parent.transform, child.transform)
         moved.append(clone)
     return moved
 

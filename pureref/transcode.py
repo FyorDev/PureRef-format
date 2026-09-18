@@ -10,7 +10,8 @@ explanation instead of producing a file PureRef cannot open.
 """
 from __future__ import annotations
 
-from .model import Resource
+from .items import ImageItem
+from .resources import Resource
 from .qt import FormatError
 
 
@@ -52,8 +53,6 @@ def thumbnail(scene, *, size: int = 256, background=(26, 26, 26)) -> bytes:
     from io import BytesIO
 
     from PIL import Image
-
-    from .model import ImageItem
     placements = []
     for item in scene.walk():
         if isinstance(item, ImageItem) and not item.resource.linked:

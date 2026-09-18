@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from .model import ImageItem
+from .items import ImageItem
 
 
 def natural_key(text: str):

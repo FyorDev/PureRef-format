@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import struct
 
-from ..model import Transform
+from ..geometry import Transform
 from ..qt import Cursor, FormatError, Path
 from ..records import (F64, I8, I32, U16, U32, U64, Codec, Field, Matrix6,
                        NullableUtf16String, PointF, Raw, Record, Rect, Tuple,
