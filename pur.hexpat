@@ -9,12 +9,12 @@ import std.mem;
 import type.size;
 
 struct matrix {
-  double matrix_val1;
-  double matrix_val2;
-  padding[8];
-  double matrix_val3;
-  double matrix_val4;
-  padding[8];
+  double m11;
+  double m12;
+  padding[8]; // m13, stored but rewritten as 0 by PureRef
+  double m21;
+  double m22;
+  padding[8]; // m23, likewise
 };
 
 struct color {
@@ -36,9 +36,11 @@ struct header {
   u16 total_items;
   be u16 num_images;
   u64 file_length;
-  u8 unknown_required[8]; // Required 0000000C0031002E
-  padding[8]; // Not required
-  padding[4]; // Not required
+  // The application that wrote the file: "1.10.4" or "1.11.1", six characters
+  // in twelve bytes. PureRef accepts it zero-filled, which is why it looked
+  // required: the leading 0000000C is the QString's byte count.
+  std::string::SizedString<u32> application_version;
+  u32 checksum_length; // 64
   u8 checksum[64];
   u32 id_counter;
 
@@ -68,7 +70,9 @@ fn get_end() {
 
 struct image {
   if (get_end() == 4) {
-    u8 duplicate_image[4] [[comment("Duplicate of the previous image")]];
+    // FF FF FF FF is a linked image, loaded from the item's source path;
+    // anything else is the id of the item that owns the preceding PNG.
+    u8 duplicate_or_link[4] [[comment("Instance of the previous image, or FFFFFFFF for a link")]];
   } else {
     u8 image[get_end()] [[comment("PNG image")]];
   }
@@ -90,9 +94,9 @@ struct item {
     color foreground; 
     padding[2];
     color background;
+    padding[2];
     u32 children;
     item Children[children];
-    padding[2];
   }
   else if (string_length == 34) // Image
   {
@@ -112,7 +116,7 @@ struct item {
     else {
       std::string::SizedString<u32> name;
     }
-    padding[8];
+    double opacity; // 1.0 when fully opaque; PureRef keeps it as a float
     matrix Matrix;
     double x;
     double y;
@@ -126,7 +130,13 @@ struct item {
     
     u32 point_count;
     crop_point cropPoints[point_count];
-    padding[21];
+    // Stored state PureRef hands back unchanged; it writes 0.0, 1, 0, 2000, 2000
+    // and normalises the u8 to a boolean. None of it affects rendering.
+    double unknown_zero;
+    u32 unknown_one;
+    u8 unknown_flag;
+    u32 unknown_2000_a;
+    u32 unknown_2000_b;
     u32 children;
     item Children[children];
   }

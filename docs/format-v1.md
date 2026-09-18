@@ -190,13 +190,41 @@ written as UTF-16BE at offset 44. It covers the item-id count, the canvas, the
 view, and every section after the header. Getting this wrong is what made early
 versions of this project produce files PureRef opened with a corruption warning.
 
+## Version history
+
+PureRef 2.x still contains the whole legacy loader family, and its symbol names
+lay the history out: `load12`, `load13`, `load14`, `load15` and `load110`, plus
+per-item readers `loadSingleItemMetadata16`, `17`, `18` and a current one. The
+item record's layout is chosen by the version string in the header —
+`1.7` selects reader 16, `1.8` selects 17, `1.9` selects 18, and anything from
+`1.9` up uses the current one. A `1.10` file therefore uses the newest item
+layout, which is the one described above and the only one this package
+implements. 2.x can also still *write* this format (`savePurBinary`), which is
+what the "overwrite old format" prompt is about.
+
 ## Where these answers come from
 
-1.x is a 2 MB binary against shared Qt 5.12 that exports none of its internals,
-and its classes register no `Q_ENUM`s — its 31 meta objects contain no enum keys
-at all. So unlike the 2.x notes, nothing here could be read out of the code:
-every field above was settled by writing a value, loading the file in 1.10.4 and
-1.11.1, looking at what they render, and reading back what they save.
+1.x is a 2 MB binary against shared Qt 5.12 that exports none of its internals
+and registers no `Q_ENUM`s, so unlike the 2.x notes, none of the field meanings
+above could be read out of the code: each was settled by writing a value, loading
+the file in 1.10.4 and 1.11.1, looking at what they render, and reading back what
+they save.
+
+Its meta objects are not completely empty, though — the 150 slots and signals in
+1.11.1 carry their declared types, which is how `ImageLoader::load(QStringList
+urls, float x, float y, LoadJob*)` shows that load coordinates are floats, and
+that `setAutoDownscale`, `setAutoDownscaleMaxWidth` and `setDefaultNoteColor`
+already existed in 1.x.
+
+## The clipboard carries this format too
+
+PureRef copies items to the clipboard under the mime type `pureref/binary`, in
+every release from 1.10.4 to 2.1.3. The payload is a `QDataStream` holding the
+sending instance's key, an item count, a `QRectF` of the selection, and then item
+records written by the same `writeItemMetadata` the 1.x file writer uses — so a
+reader for the item blocks above is most of a paste parser. Image pixels are not
+in the payload: the receiving instance asks the sender for them over a local
+socket, which is why pasting between different PureRef versions is refused.
 
 ## What 1.x does not have
 
