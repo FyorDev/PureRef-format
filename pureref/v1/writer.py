@@ -8,6 +8,7 @@ in the records from `records.py`, which are the same declarations the reader use
 from __future__ import annotations
 
 import struct
+from copy import copy
 from dataclasses import dataclass, field
 
 from .. import transcode
@@ -41,11 +42,15 @@ class Plan:
     canvas: tuple[float, float, float, float]
     folder: str
     header: bytes
+    # Image items in the order they will be written, instances following the
+    # image they share, and the note items after them.
     images: list[ImageItem] = field(default_factory=list)
     notes: list[NoteItem] = field(default_factory=list)
-    resources: list[tuple] = field(default_factory=list)      # identity keys, in order
-    owners: dict = field(default_factory=dict)                # identity -> owning item
-    ids: dict[int, int] = field(default_factory=dict)          # id(item) -> item id
+    # One entry per distinct resource, in writing order, and the item whose
+    # block carries its pixels.
+    resources: list[tuple] = field(default_factory=list)
+    owners: dict[tuple, ImageItem] = field(default_factory=dict)
+    ids: dict[int, int] = field(default_factory=dict)         # id(item) -> item id
 
     @property
     def root_count(self) -> int:
@@ -53,6 +58,8 @@ class Plan:
 
 
 def _plan(scene: Scene, *, flatten_groups: bool, canvas) -> Plan:
+    # One pass: flattening clones the items it reparents, so a second pass would
+    # produce different objects for the same notes.
     found: list[ImageItem] = []
     notes: list[NoteItem] = []
     for item in _flattened(scene.items, flatten_groups):
@@ -61,33 +68,33 @@ def _plan(scene: Scene, *, flatten_groups: bool, canvas) -> Plan:
         elif isinstance(item, NoteItem):
             notes.append(item)
 
-    owners: dict = {}
-    order: list = []
-    for item in found:
-        key = item.resource.identity()
-        if key not in owners:
-            owners[key] = item
-            order.append(key)
-
     # Instances are grouped under the image they share, and ids follow that
     # order: PureRef pairs the image section with the reference table in address
     # order and rejects the file when an id jumps backwards.
-    images = [item for key in order for item in found
-              if item.resource.identity() == key]
-    ids = {id(item): index for index, item in enumerate(images)}
-    next_id = len(images)
-    for root in images + notes:
-        for item in root.walk():
-            if isinstance(item, NoteItem) and id(item) not in ids:
-                ids[id(item)] = next_id
-                next_id += 1
+    shared: dict[tuple, list[ImageItem]] = {}
+    for item in found:
+        shared.setdefault(item.resource.identity(), []).append(item)
+    images = [item for instances in shared.values() for item in instances]
 
     stored = scene.v1
     return Plan(scene=scene,
                 canvas=tuple(canvas or _canvas_for(scene)),
                 folder=(stored.folder if stored and stored.folder else ''),
                 header=(stored.header if stored else b'') or bytes(fmt.HEADER_SIZE),
-                images=images, notes=notes, resources=order, owners=owners, ids=ids)
+                images=images, notes=notes,
+                resources=list(shared),
+                owners={key: instances[0] for key, instances in shared.items()},
+                ids=_assign_ids(images, notes))
+
+
+def _assign_ids(images: list[ImageItem], notes: list[NoteItem]) -> dict[int, int]:
+    """Image items first, in writing order, then every note in tree order."""
+    ids = {id(item): index for index, item in enumerate(images)}
+    for root in images + notes:
+        for item in root.walk():
+            if isinstance(item, NoteItem) and id(item) not in ids:
+                ids[id(item)] = len(ids)
+    return ids
 
 
 def _canvas_for(scene: Scene):
@@ -114,7 +121,6 @@ def _flattened(items, flatten_groups: bool):
 
 def _reparent(parent: Item, children):
     """Fold the parent's transform into children that cannot stay nested."""
-    from copy import copy
     moved = []
     for child in children:
         clone = copy(child)

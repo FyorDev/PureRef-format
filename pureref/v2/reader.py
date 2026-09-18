@@ -21,6 +21,7 @@ from ..qt import FormatError, Path
 from . import cells, schema, values
 from .document import Document
 
+
 def read(data: bytes) -> Scene:
     with Document.open(data) as document:
         return build_scene(document)

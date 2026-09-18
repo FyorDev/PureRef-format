@@ -1,9 +1,10 @@
 """The things a scene holds: images, notes, groups and drawings.
 
 `Item` is what they share -- a transform relative to the parent, stacking, an
-opacity, children -- and the four subclasses add what their kind stores. The
-model is shaped like the richer 2.x format, because 1.x maps into it without
-loss: a 1.x image instance is an `ImageItem` and a 1.x text item is a `NoteItem`.
+opacity, children -- and the four subclasses add what their kind stores. There
+are exactly four, because the application defines exactly four: the typeinfo in
+the binary lists GraphicsImageItem, GraphicsTextItem, GraphicsGroupItem and
+GraphicsDrawItem and nothing else.
 """
 from __future__ import annotations
 
