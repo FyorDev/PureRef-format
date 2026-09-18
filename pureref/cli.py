@@ -21,10 +21,10 @@ from . import LATEST, VERSION_1, VERSIONS, FormatError, Scene, convert, read, wr
 from .layout import natural_key, pack_rows
 from .report import summary, text_report
 from .v2 import envelope as envelope_module
+from .v2 import schema
 from .v2.database import Database
 
 IMAGE_SUFFIXES = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tif', '.tiff')
-
 
 def main(argv=None) -> int:
     parser = _parser()
@@ -197,7 +197,6 @@ def _pack(args) -> int:
 
 
 def _missing_columns(db: Database) -> dict:
-    from .v2 import schema
     return schema.missing_columns(db.connection)
 
 
