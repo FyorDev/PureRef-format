@@ -98,10 +98,6 @@ def pack_matrix9(matrix) -> bytes:
     return struct.pack('>9d', *matrix)
 
 
-def unpack_matrix9(cursor: Cursor) -> list[float]:
-    return list(cursor.read('9d'))
-
-
 # --- PureRef 2.x cell payloads ------------------------------------------------
 
 def cell_to_bytes(value) -> bytes:

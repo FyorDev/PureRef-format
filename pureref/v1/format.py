@@ -1,28 +1,15 @@
 """Shared constants and small helpers for the 1.10 / 1.11.1 binary format.
 
+The layouts themselves live in `records.py`, which is the only description of
+them in the package; what is left here is what surrounds them -- the header size
+and checksum span, the PNG markers the image section is scanned with, the class
+name lengths items are recognized by, and the 16-bit colour conversions notes
+need.
+
 The header turns out to be the same idea as the 2.x envelope: a version QString,
 some counts, the offset where the reference table starts, an application-version
-QString and an MD5 checksum QString. PureRef 1.11.1 still writes `1.10` here, so
+QString and an MD5 checksum QString. PureRef 1.11.1 still writes `1.10` there, so
 the string is a format version rather than an application version.
-
-Fixed offsets inside the 224-byte header:
-
-    0   uint32  byte length of the version string (8)
-    4   8       UTF-16BE "1.10"
-    12  uint16  number of image items plus root note items
-    14  uint16  number of image items
-    16  uint64  offset where the reference table starts
-    24  uint32  byte length of the application-version string (12)
-    28  12      UTF-16BE application version, zero-filled by this writer
-    40  uint32  byte length of the checksum string (64)
-    44  64      UTF-16BE MD5 hex digest of everything from offset 108 on
-    108 uint32  number of item ids
-    112 32      four doubles: canvas rectangle
-    144 8       double: view zoom
-    176 8       double: view zoom again, vertically
-    208 8       double: zoom multiplier, always 1.0
-    216 4       int32: view x
-    220 4       int32: view y
 """
 from __future__ import annotations
 
