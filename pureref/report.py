@@ -37,14 +37,14 @@ def _provenance(scene: Scene) -> dict:
             'checksum_valid': stored.checksum_valid,
             'application_version': stored.application_version,
             'folder': stored.folder}}
-    if modern is not None:
+    if modern is not None and modern.envelope is not None:
         envelope = modern.envelope
         return {'container': {
-            'checksum': getattr(envelope, 'checksum', None),
-            'checksum_valid': getattr(envelope, 'checksum_valid', None),
-            'application_version': getattr(envelope, 'application_version', None),
-            'database_bytes': getattr(envelope, 'database_size', None),
-            'thumbnail_bytes': len(getattr(envelope, 'thumbnail', b'') or b''),
+            'checksum': envelope.checksum,
+            'checksum_valid': envelope.checksum_valid,
+            'application_version': envelope.application_version,
+            'database_bytes': envelope.database_size,
+            'thumbnail_bytes': len(envelope.thumbnail or b''),
             'user_version': modern.user_version,
             'integrity': modern.integrity,
             'unknown_tables': modern.unknown_tables}}

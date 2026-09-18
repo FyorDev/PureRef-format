@@ -88,7 +88,11 @@ def write(scene: Scene, path, *, version: str = LATEST, overwrite: bool = False,
     """
     losses = scene.losses(version)
     data = write_bytes(scene, version=version, **options)
-    Path(path).write_bytes(data) if overwrite else _write_new(Path(path), data)
+    target = Path(path)
+    if overwrite:
+        target.write_bytes(data)
+    else:
+        _write_new(target, data)
     return losses
 
 
@@ -100,8 +104,7 @@ def convert(source, target, *, version: str = LATEST, overwrite: bool = False,
 
 def summary(scene: Scene) -> dict:
     """A readable overview of a scene, used by `pureref info`."""
-    from .report import summary as _summary
-    return _summary(scene)
+    return report.summary(scene)
 
 
 def _write_new(path: Path, data: bytes) -> None:

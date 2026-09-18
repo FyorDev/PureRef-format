@@ -196,7 +196,8 @@ class Scene:
         if version not in VERSIONS:
             raise ValueError(f'Unknown version {version!r}; expected one of {VERSIONS}')
         if version == VERSION_2_0:
-            preview = getattr(getattr(self.v2, 'envelope', None), 'thumbnail', b'')
+            envelope = self.v2.envelope if self.v2 else None
+            preview = envelope.thumbnail if envelope else b''
             return [Loss('thumbnail', 'the preview image: the 2.0 header has no '
                          'thumbnail field')] if preview else []
         if version != VERSION_1:

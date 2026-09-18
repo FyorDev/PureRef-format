@@ -13,8 +13,12 @@ values for all of it.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from .geometry import Transform
+
+if TYPE_CHECKING:          # the envelope is a 2.x thing; the model only holds it
+    from .v2.envelope import Envelope
 
 @dataclass
 class V1Image:
@@ -91,7 +95,7 @@ class V2Item:
 class V2File:
     """The parts of a 2.x file outside the item tables."""
 
-    envelope: object | None = None
+    envelope: Envelope | None = None
     metadata: dict = field(default_factory=dict)
     unknown_tables: list = field(default_factory=list)
     user_version: int | None = None

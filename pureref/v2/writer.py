@@ -40,7 +40,7 @@ def write(scene: Scene, *, format_version: str = VERSION_2_1,
     anything this package does not model — the escape hatch that keeps SQL an
     option without making it the interface.
     """
-    stored = getattr(scene.v2, 'envelope', None)
+    stored = scene.v2.envelope if scene.v2 else None
     preview = thumbnail if thumbnail is not None else getattr(stored, 'thumbnail', b'')
     if preview and format_version == VERSION_2_0:
         if thumbnail:
@@ -130,7 +130,7 @@ def _write_subtype(db: Database, item: Item, item_id: int, resources) -> None:
 
 def _write_metadata(db: Database, scene: Scene, envelope: Envelope,
                     scene_rect) -> None:
-    kept = dict(getattr(scene.v2, 'metadata', None) or {})
+    kept = dict((scene.v2.metadata if scene.v2 else None) or {})
     row = {name: kept.get(name) for name in schema.columns('metadata')}
     row.update(
         id=0,
@@ -161,7 +161,7 @@ def _cell(item: Item, table: str, column: str, value):
     A cell the reader could not interpret goes back exactly as it arrived; every
     other value is encoded through `cells.py`, which is also what read it.
     """
-    kept = (getattr(item.v2, 'unparsed', None) or {}).get(column)
+    kept = (item.v2.unparsed if item.v2 else {}).get(column)
     if isinstance(kept, Unparsed):
         return kept.cell
     return cells.encode(table, column, value)
@@ -170,7 +170,7 @@ def _cell(item: Item, table: str, column: str, value):
 def _assign_ids(scene: Scene) -> dict[int, int]:
     """Keep the ids a file came with when they are complete and unique."""
     items = list(scene.walk())
-    stored = [getattr(item.v2, 'id', None) for item in items]
+    stored = [item.v2.id if item.v2 else None for item in items]
     if all(value is not None for value in stored) and len(set(stored)) == len(stored):
         return {id(item): cast(int, value)
                 for item, value in zip(items, stored, strict=True)}

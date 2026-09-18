@@ -281,7 +281,7 @@ def _loops(item_id: int, parents) -> bool:
 def _sort_siblings(siblings: list[Item]) -> None:
     """PureRef orders siblings by sort_order, comparing rationals."""
     siblings.sort(key=lambda item: (item.order is None, item.order or 0,
-                                    getattr(item.v2, 'id', None) or 0))
+                                    item.v2.id if item.v2 and item.v2.id else 0))
 
 
 def _plain_text(html: str) -> str:
