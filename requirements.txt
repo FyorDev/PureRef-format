@@ -1,3 +1,0 @@
-# The package itself needs nothing; this file is for the optional extras.
-# pip install ".[thumbnails]" installs the same thing.
-pillow>=10

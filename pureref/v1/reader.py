@@ -7,6 +7,8 @@ modelled is kept on `item.v1` so a save reproduces the file.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from .. import imagesize
 from ..model import (VERSION_1, ImageItem, Item, V1File, V1Image,
                      V1Note, NoteItem, Resource, Scene, Transform, View)
@@ -21,9 +23,43 @@ def read(data: bytes) -> Scene:
         raise FormatError('Too short to be a PureRef 1.x file')
     header = _read_header(blob)
     slots, items_start = _read_image_section(blob, header)
-    parsed = _read_items(blob, header, items_start)
+    items = _read_items(blob, header, items_start)
     references = _read_references(blob, header)
-    return _assemble(blob, header, slots, parsed, references)
+    return _assemble(blob, header, slots, items, references)
+
+
+@dataclass
+class Slot:
+    """One addressable entry of the image section, with where it sits.
+
+    It is either the bytes of an embedded PNG or a four-byte reference: the id of
+    the item that owns the preceding image, or the link marker. The reference
+    table at the end of the file points at these addresses, which is how an item
+    finds its pixels.
+    """
+
+    start: int
+    end: int
+    data: bytes | None = None
+    reference: bytes = b''
+
+    @property
+    def linked(self) -> bool:
+        return self.reference == fmt.LINK_SLOT
+
+    @property
+    def owner(self) -> int:
+        """The item whose image this slot shares."""
+        return int.from_bytes(self.reference, 'big')
+
+
+@dataclass
+class Items:
+    """What the item section held: the tree, its image items by id, the folder."""
+
+    roots: list[Item] = field(default_factory=list)
+    images: list[tuple[int, ImageItem]] = field(default_factory=list)
+    folder: str | None = None
 
 
 # --- header -------------------------------------------------------------------
@@ -44,13 +80,13 @@ def _text(raw: bytes) -> str | None:
 
 # --- image section ------------------------------------------------------------
 
-def _read_image_section(blob: bytes, header: dict) -> tuple[list[dict], int]:
+def _read_image_section(blob: bytes, header: dict) -> tuple[list[Slot], int]:
     """The embedded PNGs and the four-byte slots between them, with addresses.
 
     Returns the entries and the offset where the item blocks start, because the
     reference table at the end of the file points at these address ranges.
     """
-    slots: list[dict] = []
+    slots: list[Slot] = []
     limit = header['reference_offset']
     pos = fmt.HEADER_SIZE
     while pos < limit:
@@ -61,7 +97,7 @@ def _read_image_section(blob: bytes, header: dict) -> tuple[list[dict], int]:
             # the id of the instance that owns the image data.
             if _looks_like_item(blob, pos, limit):
                 return slots, pos
-            slots.append({'start': pos, 'end': pos + 4, 'ref': blob[pos:pos + 4]})
+            slots.append(Slot(pos, pos + 4, reference=blob[pos:pos + 4]))
             pos += 4
         if start == -1:
             return slots, pos
@@ -69,7 +105,7 @@ def _read_image_section(blob: bytes, header: dict) -> tuple[list[dict], int]:
         if end == -1:
             raise FormatError('Embedded PNG without an IEND chunk')
         end += len(fmt.PNG_FOOT)
-        slots.append({'start': start, 'end': end, 'data': blob[start:end]})
+        slots.append(Slot(start, end, data=blob[start:end]))
         pos = end
     return slots, pos
 
@@ -86,19 +122,18 @@ def _looks_like_item(blob: bytes, pos: int, limit: int) -> bool:
 
 # --- item blocks --------------------------------------------------------------
 
-def _read_items(blob: bytes, header: dict, start: int) -> dict:
+def _read_items(blob: bytes, header: dict, start: int) -> Items:
     """Read the item blocks in file order, then the trailing folder string."""
     cursor = Cursor(blob, start)
     limit = header['reference_offset']
-    roots: list[Item] = []
-    images: list[tuple[int, ImageItem]] = []
+    parsed = Items()
     while cursor.pos < limit and _looks_like_item(blob, cursor.pos, limit):
         item, values = _read_item(cursor, limit)
         if isinstance(item, ImageItem):
-            images.append((values['id'], item))
-        roots.append(item)
-    folder = cursor.read_string() if cursor.pos < limit else None
-    return {'roots': roots, 'images': images, 'folder': folder}
+            parsed.images.append((values['id'], item))
+        parsed.roots.append(item)
+    parsed.folder = cursor.read_string() if cursor.pos < limit else None
+    return parsed
 
 
 def _read_item(cursor: Cursor, limit: int) -> tuple[Item, dict]:
@@ -179,42 +214,51 @@ def _placeholder() -> Resource:
     return Resource(1, 1, b'', 'PNG')
 
 
-def _assemble(blob, header: dict, slots, parsed, references) -> Scene:
-    by_start = {slot['start']: slot for slot in slots}
-    owners: dict[int, Resource] = {}
-    instances: list[tuple[int, ImageItem, dict]] = []
-    for item_id, item in parsed['images']:
-        start = references.get(item_id, (None, None))[0]
+def _assemble(blob: bytes, header: dict, slots: list[Slot], parsed: Items,
+              references: dict[int, tuple[int, int]]) -> Scene:
+    """Give every image item its pixels, then build the scene around them."""
+    by_start = {slot.start: slot for slot in slots}
+    instances = []
+    for item_id, item in parsed.images:
+        start = references.get(item_id, (-1, -1))[0]
         slot = by_start.get(start)
         if slot is None:
             raise FormatError(f'Image item {item_id} has no usable reference')
+        _carrier(item).address = (slot.start, slot.end)
         instances.append((item_id, item, slot))
-        stored = _carrier(item)
-        stored.address = (slot['start'], slot['end'])
-        if 'data' in slot:
-            owners[item_id] = _resource_for(slot['data'], item, stored.source)
-        elif slot['ref'] == fmt.LINK_SLOT:
-            owners[item_id] = _resource_for(None, item, stored.source)
+    owners = _owners(instances)
     for item_id, item, slot in instances:
-        resource = owners.get(item_id)
-        if resource is None:
-            owner_id = int.from_bytes(slot['ref'], 'big')
-            if owner_id not in owners:
-                raise FormatError(f'Instance {item_id} points at unknown item {owner_id}')
-            resource = owners[owner_id]
-        item.resource = resource
-        item.pixel_transform = Transform.translate(-resource.width / 2,
-                                                   -resource.height / 2)
-    scene = Scene(items=parsed['roots'], canvas=header['canvas'],
-                  view=View(header['zoom'], header['view_x'], header['view_y']),
-                  source_version=VERSION_1)
-    scene.v1 = V1File(
-        header=header['bytes'],
-        application_version=_text(header['application_version']),
-        checksum=_text(header['checksum']),
-        checksum_valid=_text(header['checksum']) == fmt.checksum(blob),
-        folder=parsed['folder'])
-    return scene
+        item.resource = _resource(item_id, slot, owners)
+        item.pixel_transform = Transform.translate(-item.resource.width / 2,
+                                                   -item.resource.height / 2)
+    checksum = _text(header['checksum'])
+    return Scene(
+        items=parsed.roots, canvas=header['canvas'],
+        view=View(header['zoom'], header['view_x'], header['view_y']),
+        source_version=VERSION_1,
+        v1=V1File(header=header['bytes'],
+                  application_version=_text(header['application_version']),
+                  checksum=checksum,
+                  checksum_valid=checksum == fmt.checksum(blob),
+                  folder=parsed.folder))
+
+
+def _owners(instances) -> dict[int, Resource]:
+    """The items that carry image data, by id; the rest only point at these."""
+    resources = {}
+    for item_id, item, slot in instances:
+        if slot.data is not None or slot.linked:
+            resources[item_id] = _resource_for(slot.data, item, _carrier(item).source)
+    return resources
+
+
+def _resource(item_id: int, slot: Slot, owners: dict[int, Resource]) -> Resource:
+    """The pixels for one image item: its own, or the ones its slot points at."""
+    if item_id in owners:
+        return owners[item_id]
+    if slot.owner not in owners:
+        raise FormatError(f'Instance {item_id} points at unknown item {slot.owner}')
+    return owners[slot.owner]
 
 
 def _resource_for(data: bytes | None, item: ImageItem, source: str | None) -> Resource:

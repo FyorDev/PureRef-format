@@ -131,6 +131,33 @@ pureref batch Artists Purs        # Artists/<name>/*.jpg  ->  Purs/<name>.pur
 pureref info board.pur --json | jq .counts
 ```
 
+## How the code is laid out
+
+Every layout is declared once and both directions read from that declaration, so
+a field cannot be parsed one way and written another:
+
+```text
+pureref/
+  model.py        the map: re-exports the model, says which file holds what
+  constants.py    the numbers both formats store, and what they mean
+  geometry.py     Transform            resources.py  Resource
+  items.py        Item and its kinds   scene.py      Scene, View, losses()
+  carriers.py     what a file held that the model does not name
+  qt.py           Qt wire formats: strings, variants, big integers, paths
+  records.py      the record/codec vocabulary the 1.x layouts are declared in
+  problems.py     Loss, Problem, Unparsed
+  v1/  records.py   the 1.10 layouts, declared once
+       reader.py    walks the sections        writer.py  plans, then emits
+       format.py    constants, checksum, 16-bit colours
+  v2/  schema.py    the SQLite schema and every column's meaning
+       values.py    how a serialized cell is stored and read
+       cells.py     which column holds which of those
+       envelope.py  the displaced-prefix container
+       document.py  a file before interpretation: rows, database, repack
+       reader.py    rows to a Scene           writer.py  a Scene to rows
+  cli.py, layout.py, report.py, transcode.py, imagesize.py
+```
+
 ## Looking at the bytes
 
 `pur.hexpat` is an [ImHex](https://imhex.werwolv.net) pattern covering **both**
