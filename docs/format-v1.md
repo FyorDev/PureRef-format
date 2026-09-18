@@ -255,3 +255,6 @@ Groups, drawings, rich-text notes, render flags, animation, item comments and
 non-PNG image data all arrived with 2.x. Image opacity did not: it is the field
 above. `Scene.losses('1.10')` lists whichever of the missing ones a scene uses
 before you write it.
+
+An [ImHex](https://imhex.werwolv.net) pattern for everything on this page is in
+[pur.hexpat](../pur.hexpat), which covers 2.x as well.

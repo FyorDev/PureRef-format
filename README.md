@@ -131,6 +131,26 @@ pureref batch Artists Purs        # Artists/<name>/*.jpg  ->  Purs/<name>.pur
 pureref info board.pur --json | jq .counts
 ```
 
+## Looking at the bytes
+
+`pur.hexpat` is an [ImHex](https://imhex.werwolv.net) pattern covering **both**
+generations: open any `.pur` and it decodes the one it is. For a 1.x file that is
+the header, the image section with its instance and link slots, every item field,
+the folder string and the reference table. For a 2.x file it decodes the
+envelope, previews the thumbnail, and — because the container is a SQLite
+database with its first bytes moved to the end — reassembles the database into
+its own section, maps its pages, and offers it as a `scene.sqlite` virtual file
+you can open in ImHex or any SQLite browser.
+
+The pattern is a second implementation of both layouts, so a test checks that it
+still describes every field `pureref/v1/records.py` declares. Point
+`PUREREF_PLCLI` at a [pattern-language CLI](https://github.com/WerWolv/PatternLanguage)
+to also run it over every fixture:
+
+```sh
+PUREREF_PLCLI=~/PatternLanguage/build/cli/plcli python -m unittest tests.test_hexpat
+```
+
 ## Install
 
 Python 3.10 or newer; no required dependencies.

@@ -337,3 +337,8 @@ scene is associated with (its own, after a save), `last_load_checksum` the heade
 checksum of the file the scene was loaded from — so PureRef can tell whether the
 file on disk changed underneath it — and `saved` is 0 when the scene had never
 been associated with a `.pur` before this save.
+
+An [ImHex](https://imhex.werwolv.net) pattern for this container is in
+[pur.hexpat](../pur.hexpat): it reassembles the displaced database into a section
+and hands it over as a `scene.sqlite` virtual file, so the tables can be opened
+in any SQLite browser.
