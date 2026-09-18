@@ -190,6 +190,14 @@ written as UTF-16BE at offset 44. It covers the item-id count, the canvas, the
 view, and every section after the header. Getting this wrong is what made early
 versions of this project produce files PureRef opened with a corruption warning.
 
+## Where these answers come from
+
+1.x is a 2 MB binary against shared Qt 5.12 that exports none of its internals,
+and its classes register no `Q_ENUM`s — its 31 meta objects contain no enum keys
+at all. So unlike the 2.x notes, nothing here could be read out of the code:
+every field above was settled by writing a value, loading the file in 1.10.4 and
+1.11.1, looking at what they render, and reading back what they save.
+
 ## What 1.x does not have
 
 Groups, drawings, rich-text notes, render flags, animation, item comments and

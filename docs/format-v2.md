@@ -154,7 +154,11 @@ Channels are `value * 257` of an 8-bit channel.
 
 `style` is the stroke's appearance: **0** solid with rounded ends (all PureRef
 2.0.3 and 2.1.3 ever write, for freehand and straight strokes alike), **1**
-dashed, **2** solid with square ends. Style 2 also widens the item's bounding
+dashed, **2** solid with square ends — the same three renders in both 2.x
+releases. It is not the drawing tool: 2.1 registers
+`DrawToolbar::Shape { Line, Ellipse, Rectangle }` and can draw those, but this
+struct and the schema are unchanged from 2.0.3, so a shape has to be stored as
+ordinary `QPainterPath` geometry. Style 2 also widens the item's bounding
 rectangle — `GraphicsDrawItem::strokeStyleExtraBounds` returns an empty rectangle
 for every other style and expands the path's end points by the stroke width for
 this one. Other values draw like 0.
@@ -209,7 +213,9 @@ image cache. Higher bits survive a re-save and do nothing.
 
 `playback_state` is `0` for stills, `2` paused at `playback_frame` — the only
 state where that frame is rendered — and `3` playing, which is what PureRef
-writes for an animated GIF.
+writes for an animated GIF. It is not the `Movie::State` enum the binary
+registers (`NotRunning`, `Paused`, `Running` = 0, 1, 2); the stored values sit one
+higher, so `0` means "not an animation" rather than "stopped".
 
 ## Notes, groups, drawings
 
@@ -218,9 +224,11 @@ the HTML carries none and overridden by an inline color. `background_color`
 takes `#AARRGGBB` with the alpha honored, or `''` for the default. `style` is
 `0` Comfortable or `1` Compact.
 
-`items_groups` holds only a background color and `lock_mode`: `0` open, `1`
-closed, which is PureRef's default and makes a click select the group instead of
-the child. Group geometry comes from the children.
+`items_groups` holds only a background color and `lock_mode`. That is
+`GraphicsGroupItem::LockMode`, and since the enum is registered its keys are
+readable straight out of the binary's meta object: **`Open = 0`, `Closed = 1`**,
+with no third mode. Closed is PureRef's default and makes a click select the
+group instead of the child. Group geometry comes from the children.
 
 `items_drawings.strokes` is the stroke list above; the item's transform places
 it, and the paths are in item coordinates.
